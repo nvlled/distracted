@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -20,9 +19,16 @@ func (app *App) LoadConfig() {
 		StartDecksDir:         "starting-decks",
 		SampleDistractionsDir: "sample-distractions",
 		BaseUrlDecks:          "decks",
+		DailyStudyName:        DefaultStudyName,
+		MaxLearnLevel:         MaxLearnLevel,
+		CurrentDate:           app.CurrentDate(),
+		StudySessionTypes: StudySessionTypes{
+			Normal: StudySessionTypeNormal,
+			Quiz:   StudySessionTypeQuiz,
+		},
 	}
 
-	bytes := lo.Must(ioutil.ReadFile("wails.json"))
+	bytes := lo.Must(assets.ReadFile("wails.json"))
 	data := struct {
 		Name string `json:"name"`
 	}{}

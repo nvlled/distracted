@@ -1,7 +1,10 @@
 
+_dump/*
 frontend/node_modules/
 frontend/dist/
 frontend/wailsjs/
-data/
+./data/*
+./data
 build/
+
 

@@ -2,9 +2,9 @@ package main
 
 import (
 	"embed"
-	"log"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2"
@@ -18,21 +18,25 @@ import (
 var assets embed.FS
 
 func main() {
-	defer func() {
-		if err := recover(); err != nil {
-			log.Printf("panic occurred: %+v\n", err)
-			os.Exit(1)
-		}
-	}()
 
 	rand.Seed(time.Now().UnixNano())
 	// Create an instance of the app structure
 	app := NewApp()
 
+	for _, arg := range os.Args[1:] {
+		arg = strings.TrimPrefix(arg, "-")
+		arg = strings.TrimPrefix(arg, "--")
+
+		if arg == "start-hidden" {
+			app.startHidden = true
+		}
+	}
+
 	// Create application with options
 	err := wails.Run(&options.App{
 		WindowStartState: options.Minimised,
 		StartHidden:      true,
+
 		Assets:           assets,
 		AssetsHandler:    app.server,
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
@@ -45,7 +49,7 @@ func main() {
 
 		Bind: []interface{}{
 			app,
-			&WailsExt{app.ctx},
+			&WailsExt{app},
 			&errorList,
 		},
 	})

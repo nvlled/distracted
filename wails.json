@@ -5,9 +5,10 @@
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "http://localhost:3000",
-  "debounceMS": 512,
+  "debounceMS": 300,
   "author": {
     "name": "Ronald Casili",
     "email": "nvlled@gmail.com"
-  }
+  },
+  "appargs": "-start-hidden"
 }

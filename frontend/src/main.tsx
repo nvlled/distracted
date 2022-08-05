@@ -9,16 +9,23 @@ import "./water-dark.css";
 //import "./classless-themes.css";
 import "./style.css";
 import App from "./App";
+import * as app from "../wailsjs/go/main/App";
+import { setConfig } from "./config";
 
-const container = document.getElementById("root");
-document.documentElement.setAttribute("data-theme", "dark");
+async function main() {
+    const container = document.getElementById("root");
+    document.documentElement.setAttribute("data-theme", "dark");
 
-const root = createRoot(container!);
+    setConfig(await app.GetConfig());
+    const root = createRoot(container!);
 
-root.render(
-    <React.StrictMode>
-        <App />
-    </React.StrictMode>,
-);
+    root.render(
+        <React.StrictMode>
+            <App />
+        </React.StrictMode>,
+    );
 
-console.log("load main");
+    console.log("load main");
+}
+
+main();

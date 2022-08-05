@@ -8,9 +8,11 @@ export const appState = {
     youtubeQueue: atom([] as { filename: string; link: string }[]),
     config: atom(main.Config.createFrom()),
     userData: atom(main.UserData.createFrom()),
-    mainPage: atom("prepare" as MainPages),
+    mainPage: atom("home" as MainPages),
     drillCards: atom([] as Card[]),
     currentDrillCard: atom(null as Card | null),
     deckFiles: atom({} as Record<string, main.CardFile[] | undefined>),
-    currentCard: atom(null as Card | null),
+    currentCard: atom(undefined as Card | undefined),
+
+    distractionMode: atom(false),
 };

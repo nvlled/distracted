@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { app } from "./api";
 import { lt } from "./layout";
-import { Invoke } from "./lib";
+import { invoke } from "./lib";
 import { Action, Action1 } from "./lib";
 
 interface ContainerProps {
@@ -33,7 +33,7 @@ export function Notes({ show, onClose }: { show: boolean; onClose: Action }) {
     const [notes, setNotes] = useState("");
     const textRef = useRef<HTMLTextAreaElement>(null);
     useEffect(() => {
-        Invoke(async () => {
+        invoke(async () => {
             if (show) {
                 console.log("getting notes");
                 const notes = await app.GetNotes();

@@ -1,167 +1,302 @@
-import { marked } from "marked";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { main } from "../wailsjs/go/models";
-import { Card, CardFaceData, Entry } from "./card";
-import { Action, Action1 } from "./lib";
+import { Card } from "./card";
+import { FactorTrial } from "./factors";
+
+import {
+    Action,
+    currentDate,
+    hasProp,
+    LocalStorageSerializer,
+    OrderedSet,
+    sleep,
+    useCardWatch,
+} from "./lib";
+
+import { ProficiencyTrial } from "./trials";
 import * as app from "../wailsjs/go/main/App";
-import { Distraction, LocalMediaDistraction } from "./distraction";
-import { AudioPlayer, playAudio } from "./AudioPlayer";
-import { useAtom } from "jotai";
-import { appState } from "./state";
+import { TabOutDistraction } from "./distraction";
+import { AudioPlayer } from "./AudioPlayer";
+import { config } from "./config";
+import { ShortAlternating } from "./scheduler";
+import ReactMarkdown from "react-markdown";
 
-function secondsLeft(card: Card) {
-    const minTimeout = 6;
-    const now = Math.floor(Date.now() / 1000);
-    const elapsed = now - card.lastUpdate;
-    let seconds = elapsed < 0 ? 0 : card.interval - elapsed;
+const distractionSeconds = 1.0 * 60;
+const batchSize = 7;
 
-    return Math.max(seconds, minTimeout);
-}
-
-export function GroupCardDrill({ initCards }: { initCards: Card[] }) {
-    const [remind, setRemind] = useState(false);
-    const [cards, setCards] = useState<Card[]>(initCards);
-    const [breakTime, setBreakTime] = useState(false);
-    const [interval, setInterval] = useState(0);
-    //const [currentCard, setCurrentCard] = useState<Card | null>();
-    const [currentCard, setCurrentCard] = useAtom(appState.currentCard);
-
-    function onReturn() {
-        setBreakTime(false);
-        setCurrentCard(nextDueCard(cards));
+namespace _GrindStudySession {
+    export interface Props {
+        sessionName: string;
+        initCards: Card[];
+        onQuit: Action;
+        onAddMoreCards?: Action;
     }
+    export function View(props: Props) {
+        const { initCards, onQuit } = props;
+        const [remind, setRemind] = useState(true);
+        const [cards, setCards] = useState<Card[]>([]);
+        const [breakTime, setBreakTime] = useState(false);
+        const [cardID, setCardID] = useState<number | undefined>();
+        const [loading, setLoading] = useState(false);
 
-    function nextDueCard(cards: Card[]) {
-        const dueCards = cards.filter((c) => {
-            const now = Math.floor(Date.now() / 1000);
-            console.log(">", c.filename, now - c.lastUpdate + c.interval, now - c.lastUpdate);
-            return now >= c.lastUpdate + c.interval;
+        const containerRef = useRef<HTMLDivElement>(null);
+
+        const { current: refs } = useRef({
+            state: SerializedState.defaultState(),
+            cardsReviewed: 0,
+            initialized: false,
+            secondsElapsed: 0,
+
+            timer: 0 as number | undefined,
+            batchSize: batchSize,
+            breakTimeDuration: distractionSeconds,
         });
-        return dueCards[0];
-    }
 
-    function getBreakTimeInterval(cards: Card[]) {
-        return Math.min(...cards.map(secondsLeft));
-    }
-
-    async function onSubmit(recalled: boolean) {
-        if (!currentCard) {
-            return;
+        function onReturn() {
+            setBreakTime(false);
+            const { item: card, nextCounter } = ShortAlternating.nextDue(
+                refs.state.counter,
+                refs.batchSize,
+                cards,
+            );
+            if (card) setCardID(card.id);
+            refs.secondsElapsed = 0;
+            refs.state.counter = nextCounter;
         }
-        const updatedCardData = await app.StudyCard(currentCard.path, recalled);
-        const updatedCard: Card = {
-            ...currentCard,
-            ...updatedCardData,
-        };
-        const updatedCards = cards.map((c) => (c.path !== updatedCard.path ? c : updatedCard));
-        updatedCards.sort((a, b) => {
-            const aCount = a.numRecall + a.numForget;
-            const bCount = b.numRecall + b.numForget;
+        function waitAnimation(body: Action) {
+            return new Promise<void>((resolve) => {
+                const div = containerRef.current;
+                if (!div) {
+                    return resolve();
+                }
+                const f = () => {
+                    div.removeEventListener("transitionend", f);
+                    div.removeEventListener("transitioncancel", f);
+                    sleep(256).then(resolve);
+                };
+                div.addEventListener("transitionend", f);
+                div.addEventListener("transitioncancel", f);
+                body();
+            });
+        }
 
-            if (aCount >= 1 && aCount <= 2) return -1;
-            if (bCount >= 1 && bCount <= 2) return 1;
+        async function onSubmit(recalled: boolean, trial: FactorTrial) {
+            await waitAnimation(() => setLoading(true));
 
-            return a.interval - b.interval;
+            const currentCard = OrderedSet.get(cards, cardID);
+            if (!currentCard) return;
+
+            const elapsed = Math.min(refs.secondsElapsed, 60 * 5);
+            const updatedCard = await studyCard(currentCard, trial, recalled);
+            const updatedCards = cards.map((c: Card) =>
+                c.path !== updatedCard.path ? c : updatedCard,
+            );
+
+            console.log({ updatedCard });
+            refs.state.elapsed = elapsed;
+            refs.state.cardStatsMap = getCardStats(updatedCards);
+
+            SerializedState.save(refs.state);
+            setCards(updatedCards);
+
+            if (refs.cardsReviewed++ < Math.min(refs.batchSize, cards.length)) {
+                const { item: card, nextCounter } = ShortAlternating.nextDue(
+                    refs.state.counter,
+                    refs.batchSize,
+                    updatedCards,
+                );
+                console.log("next card", card?.id);
+                if (card) setCardID(card.id);
+                refs.state.counter = nextCounter;
+            } else {
+                setCardID(updatedCard.id);
+                setBreakTime(true);
+                refs.cardsReviewed = 0;
+
+                if (refs.batchSize < 20) {
+                    refs.batchSize += 0.3;
+                }
+                refs.breakTimeDuration += 5;
+            }
+
+            setLoading(false);
+        }
+
+        function init(cards: Card[]) {
+            const state = (refs.state = SerializedState.load());
+
+            cards = cards.map((c) => {
+                const stats = state.cardStatsMap[c.id];
+                if (stats) c = { ...c, ...stats };
+                return c;
+            });
+
+            setCards(cards);
+
+            const { item: card, nextCounter } = ShortAlternating.nextDue(
+                state.counter,
+                refs.batchSize,
+                cards,
+            );
+            if (card) {
+                console.log("current card>", card);
+                setCardID(card.id);
+            }
+
+            refs.state.counter = nextCounter;
+            refs.batchSize = Math.min(refs.batchSize, cards.length);
+        }
+
+        useEffect(() => {
+            if (refs.initialized) {
+                return;
+            }
+
+            init(initCards);
+            refs.initialized = true;
+        }, [initCards]);
+
+        useEffect(() => {
+            function onFocus() {
+                refs.timer = window.setInterval(() => {
+                    refs.secondsElapsed++;
+                }, 1000);
+            }
+            function onBlur() {
+                clearInterval(refs.timer);
+            }
+
+            onFocus();
+            window.addEventListener("focus", onFocus);
+            window.addEventListener("blur", onBlur);
+            return () => {
+                window.removeEventListener("focus", onFocus);
+                window.removeEventListener("blur", onBlur);
+            };
+        }, []);
+
+        const currentCard = OrderedSet.get(cards, cardID);
+        let body = <div />;
+        if (remind) {
+            body = <Reminders onSubmit={() => setRemind(false)} />;
+        } else if (currentCard) {
+            body = (
+                <>
+                    {breakTime && (
+                        <TabOutDistraction
+                            card={currentCard}
+                            seconds={refs.breakTimeDuration}
+                            onReturn={onReturn}
+                        />
+                    )}
+                    {!breakTime && (
+                        <ProficiencyTrial
+                            card={currentCard}
+                            otherCards={cards}
+                            onSubmit={onSubmit}
+                        />
+                    )}
+                </>
+            );
+        } else if (!cards.length) {
+            body = (
+                <>
+                    no cards in collection <button onClick={onQuit}>return</button>
+                </>
+            );
+        }
+
+        // TODO:
+        if (config.currentDate !== currentDate()) {
+            throw "nope";
+        }
+
+        return (
+            <div>
+                <Container isLoading={loading} ref={containerRef}>
+                    {body}
+                </Container>
+            </div>
+        );
+    }
+
+    export const Container = styled.div<{ isLoading: boolean }>`
+        position: relative;
+        transition: top 0.3s;
+        top: ${(props) => (props.isLoading ? "-100vh" : "0")};
+    `;
+    export const Ready = styled.div`
+        position: absolute;
+        top: 0;
+        height: 0;
+        width: 100%;
+        height: 100%;
+        background: #000a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    `;
+
+    type CardStatsMap = Record<number, main.CardStats | undefined>;
+
+    function getCardStats(cards: Card[]) {
+        return cards.reduce((result, card) => {
+            result[card.id] = {
+                proficiency: card.proficiency,
+                consecForget: card.consecForget,
+                consecRecall: card.consecRecall,
+                interval: card.interval,
+                lastUpdate: card.lastUpdate,
+                numForget: card.numForget,
+                numRecall: card.numRecall,
+            };
+            return result;
+        }, {} as CardStatsMap);
+    }
+
+    namespace SerializedState {
+        export const defaultState = () => ({
+            date: config.currentDate,
+            counter: 0,
+            elapsed: 0,
+            cardStatsMap: {} as CardStatsMap,
         });
+        type T = ReturnType<typeof defaultState>;
 
-        setCards(updatedCards);
-        setCurrentCard(updatedCard);
-        setBreakTime(true);
-
-        setInterval(getBreakTimeInterval(updatedCards));
-    }
-
-    useEffect(() => {
-        const card = nextDueCard(initCards);
-        console.log(card);
-        setCurrentCard(card);
-    }, [initCards]);
-
-    let body = <div />;
-    if (remind) {
-        body = <Reminders onSubmit={() => setRemind(false)} />;
-    } else if (currentCard) {
-        body = (
-            <>
-                {breakTime && (
-                    <Distraction card={currentCard} seconds={interval} onReturn={onReturn} />
-                )}
-                {!breakTime && <CardLearn.View card={currentCard} onSubmit={onSubmit} />}
-            </>
+        const serializer = new LocalStorageSerializer(
+            defaultState(),
+            "grind-study-session",
+            isValidState,
         );
-    }
-    console.log({ currentCard });
+        function isValidState(obj: unknown): obj is T {
+            if (typeof obj !== "object") return false;
+            if (obj == null) return false;
+            if (!hasProp(obj, "date", "number")) return false;
+            if (!hasProp(obj, "counter", "number")) return false;
+            if (!hasProp(obj, "cardStatsMap", "object")) return false;
 
-    return <div>{body}</div>;
+            return true;
+        }
+        export function load() {
+            let state = serializer.load();
+            return state;
+        }
+        export function save(state: T) {
+            serializer.save(state);
+        }
+    }
+
+    async function studyCard(card: Card, trial: FactorTrial, recalled: boolean) {
+        card = ShortAlternating.studyCard(card, trial, recalled);
+        card.lastUpdate = Math.floor(Date.now() / 1000);
+        await app.PersistCardStats(card);
+
+        return card;
+    }
 }
 
-export function SingleCardDrill({ card }: { card: Card }) {
-    const [remind, setRemind] = useState(false);
-    const [currentCard, setCurrentCard] = useState(card);
-    const [breakTime, setBreakTime] = useState(false);
-
-    useEffect(() => setCurrentCard(card), [card]);
-
-    function onReturn() {
-        setBreakTime(false);
-    }
-
-    async function onSubmit(recalled: boolean) {
-        const updatedCardData = await app.StudyCard(currentCard.path, recalled);
-        const card_: Card = {
-            ...card,
-            ...updatedCardData,
-        };
-        console.log({ updatedCardData });
-
-        setCurrentCard(card_);
-        setBreakTime(true);
-    }
-
-    let body = <div />;
-    if (remind) {
-        body = <Reminders onSubmit={() => setRemind(false)} />;
-    } else {
-        body = (
-            <>
-                {breakTime && (
-                    <Distraction
-                        card={currentCard}
-                        seconds={secondsLeft(currentCard)}
-                        onReturn={onReturn}
-                    />
-                )}
-                {!breakTime && <CardLearn.View card={currentCard} onSubmit={onSubmit} />}
-            </>
-        );
-    }
-
-    return <div>{body}</div>;
-}
-
-export interface Props {
-    cards: Card[];
-}
-export function SessionDrill({ cards }: Props) {
-    const [remind, setRemind] = useState(true);
-    const [cardIndex, setCardIndex] = useState(0);
-
-    function onSubmit(recalled: boolean) {
-        // TODO: app.StudyCard()
-    }
-
-    let body = <div />;
-    if (cards.length === 0) {
-        body = <div>No cards are available.</div>;
-    } else if (remind) {
-        body = <Reminders onSubmit={() => setRemind(false)} />;
-    } else {
-        body = <CardLearn.View card={cards[cardIndex]} onSubmit={onSubmit} />;
-    }
-
-    return <div>{body}</div>;
-}
+export const GrindStudySession = _GrindStudySession.View;
 
 function Reminders({ onSubmit }: { onSubmit: Action }) {
     return (
@@ -181,456 +316,54 @@ function Reminders({ onSubmit }: { onSubmit: Action }) {
     );
 }
 
-const DeckAudio = {
-    _audio: new Audio(),
-    async playFirstFront(card: Card, config: main.Config): Promise<void> {
-        const audio = DeckAudio._audio;
-        const base = config.baseUrlDecks;
-        const audioFile = card.front.contents?.filter(
-            (e) => typeof e !== "string" && e.name === "audio",
-        )[0] as Entry;
-
-        if (audioFile) {
-            audio.src = `${base}/${card.deckName}/${decodeURI(audioFile.value)}`;
-            console.log("src", audio.src);
-            audio.load();
-            playAudio(audio);
-        }
-    },
-};
-
-export namespace CardLearn {
+export namespace CardView$ {
     export interface Props {
         card: Card;
-        onSubmit: Action1<boolean>;
     }
-    const st = {
-        ShowAside: styled.div`
-            position: absolute;
-            right: 10px;
-            bottom: 10px;
-            z-index: 90;
-        `,
-        Faces: styled.div`
-            position: relative;
-        `,
-        PromptButtons: styled.div`
-            text-align: center;
-        `,
-        CardFilename: styled.div`
-            text-align: center;
-            font-size: 12px;
-            text-decoration: underline;
-            cursor: pointer;
-        `,
-    };
-    export function View({ card, onSubmit }: Props) {
-        const [config] = useAtom(appState.config);
-        const [audio] = useAtom(appState.config);
-        const [showFront, setShowFront] = useState(false);
-        const [showBack, setShowBack] = useState(false);
-        const [showAside, setShowAside] = useState(false);
-        const [obscure, setObscure] = useState(false);
-
-        //TODO: reload file
+    export function View({ card: cardProp }: Props) {
+        const [card] = useCardWatch(cardProp);
         async function onFilenameClick() {
             await app.OpenCardFile(card.path);
         }
-
-        useEffect(() => {
-            setShowFront(false);
-            setShowBack(false);
-
-            const minReviews = 10;
-            const minConsec = 2;
-            const maxConsec = 5;
-            const reviewCount = card.numForget + card.numRecall;
-            const obscure =
-                (card.consecRecall >= minConsec && card.consecRecall <= maxConsec) ||
-                (reviewCount > minReviews && card.consecForget < minConsec);
-
-            if (card.consecRecall <= maxConsec) {
-                setShowFront(true);
-                setObscure(obscure);
-            } else {
-                setObscure(false);
-                setShowBack(true);
-            }
-        }, [card]);
-
-        useEffect(() => {
-            if (showBack && showFront) {
-                setObscure(false);
-                DeckAudio.playFirstFront(card, config);
-            }
-        }, [showFront, showBack]);
-
-        useEffect(() => {
-            app.WatchCardFile(card.path);
-            return () => {
-                app.UnwatchCardFile(card.path);
-            };
-        }, []);
-
         return (
-            <div>
-                <st.CardFilename onClick={onFilenameClick}>{card.filename}</st.CardFilename>
-                <st.Faces>
-                    {showFront && (
-                        <>
-                            <CardFace.View face={card.front} obscure={obscure} />
-                        </>
-                    )}
-                    {!showFront && (
-                        <div>
-                            <button onClick={() => setShowFront(true)}>show front</button>
-                        </div>
-                    )}
-                    <hr />
-                    {showBack && (
-                        <>
-                            <CardFace.View face={card.back} />
-                        </>
-                    )}
-                    {!showBack && (
-                        <div>
-                            <button onClick={() => setShowBack(true)}>show back</button>
-                        </div>
-                    )}
-                    {showBack && (
-                        <st.ShowAside>
-                            <button onClick={() => setShowAside(!showAside)}>?</button>
-                        </st.ShowAside>
-                    )}
-                    {showBack && showAside && (
-                        <>
-                            <hr />
-                            <div style={{ fontSize: "15px" }}>
-                                <CardFace.View face={card.aside} />
-                            </div>
-                        </>
-                    )}
-                </st.Faces>
-                <br />
+            <Container>
+                <CardFilename onClick={onFilenameClick}>{card.filename}</CardFilename>
+                <ReactMarkdown
+                    children={card.contents}
+                    components={{
+                        a({ node, ...props }) {
+                            const href = props.href;
+                            let lines = [];
+                            for (const c of node.children) {
+                                if (c.type === "text") {
+                                    lines.push(c.value);
+                                }
+                            }
+                            const content = lines.join(" ");
 
-                <st.PromptButtons>
-                    {showFront &&
-                        showBack &&
-                        (card.numRecall + card.numForget === 0 ? (
-                            <div>
-                                <button onClick={() => onSubmit(true)}>continue →</button>
-                            </div>
-                        ) : (
-                            <div>
-                                <div>Do you remember?</div>
-                                <button onClick={() => onSubmit(true)}>Yes</button>
-                                <button onClick={() => onSubmit(false)}>No</button>
-                            </div>
-                        ))}
-                </st.PromptButtons>
-            </div>
+                            if (href === "sound" || href == "audio") {
+                                const a = (
+                                    <AudioPlayer src={Card.getUrlPath(card.deckName, content)} />
+                                );
+                                return a;
+                            }
+                            return <a href="#">{content}</a>;
+                        },
+                    }}
+                />
+            </Container>
         );
     }
+    const Container = styled.div``;
+    const CardFilename = styled.div`
+        text-align: center;
+        font-size: 12px;
+        text-decoration: underline;
+        cursor: pointer;
+    `;
 }
 
-export namespace CardDrill {
-    export interface Props {
-        card: Card;
-        onSubmit: Action;
-    }
-    export function View({ card, onSubmit }: Props) {
-        const [showBack, setShowBack] = useState(false);
-        return (
-            <div>
-                <CardFace.View face={card.front} />
-                {showBack && (
-                    <>
-                        <hr />
-                        <CardFace.View face={card.back} />
-                    </>
-                )}
-                <br />
-                {!showBack && (
-                    <div>
-                        <button onClick={() => setShowBack(true)}>lemme see</button>
-                    </div>
-                )}
-            </div>
-        );
-    }
-}
-
-function createBlotCanvas(rect: Rect, copyCanvas?: HTMLCanvasElement) {
-    const canvas = document.createElement("canvas");
-    const color = "#990000";
-
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    //canvas.style.border = "1px solid green";
-    canvas.style.position = "absolute";
-
-    canvas.style.left = rect.x + "px";
-    canvas.style.top = rect.y + "px";
-
-    canvas.style.width = rect.width + "px";
-    canvas.style.height = rect.height + "px";
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return canvas;
-
-    if (copyCanvas) {
-        ctx.drawImage(copyCanvas, 0, 0);
-        return canvas;
-    }
-
-    let marginX = rect.width * 0.25;
-    let marginY = rect.height * 0.25;
-
-    let [x, y] = [
-        marginX + Math.random() * (rect.width - marginX * 2),
-        marginY + Math.random() * (rect.height - marginY * 2),
-    ];
-
-    ctx.fillStyle = color;
-
-    ctx.beginPath();
-    ctx.arc(x, y, rect.width / 3.0, 0, Math.PI * 2);
-    ctx.fill();
-
-    marginX = rect.width * 0.1;
-    marginY = rect.height * 0.1;
-    for (let j = 0; j < 100; j++) {
-        [x, y] = [
-            marginX + Math.random() * (rect.width - marginX * 2),
-            marginY + Math.random() * (rect.height - marginY * 2),
-        ];
-        ctx.beginPath();
-        ctx.arc(x, y, Math.max(rect.width / (7 * (j + 1)), 0.8), 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    return canvas;
-}
-
-interface Rect {
-    //index: number;
-    tagName: string;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    text: string;
-}
-
-function getTextBounds(node: Node) {
-    if (node.nodeType != Node.TEXT_NODE) {
-        return [];
-    }
-
-    const result: Rect[] = [];
-    const range = document.createRange();
-    const len = node.textContent?.length ?? 0;
-
-    for (let i = 0; i < len; i++) {
-        range.setStart(node, i);
-        range.setEnd(node, i + 1);
-        const b = range.getBoundingClientRect();
-        result.push({
-            tagName: node.parentElement?.tagName?.toLowerCase() ?? "div",
-            x: b.x,
-            y: b.y,
-            width: b.width,
-            height: b.height,
-            text: node.textContent?.[i] ?? "",
-        });
-    }
-    return result;
-}
-
-function getAllLeterBounds(elem: Node): Rect[] {
-    const result: Rect[] = [];
-
-    if (elem.nodeType === Node.TEXT_NODE) {
-        return getTextBounds(elem);
-    }
-
-    for (const c of elem.childNodes) {
-        const bounds = getAllLeterBounds(c);
-        result.push(...bounds);
-    }
-    return result;
-}
-
-export const CardFace = {
-    View({ face, obscure = false }: { face: CardFaceData; obscure?: boolean }) {
-        const [config] = useAtom(appState.config);
-        const card = face.card;
-        const addedRef = useRef(false);
-        const canvasesRef = useRef({} as Record<string, HTMLCanvasElement | undefined>);
-
-        function onRef(div: HTMLDivElement | null) {
-            if (!div) return;
-
-            for (const c of div.querySelectorAll("canvas")) {
-                c.remove();
-            }
-
-            if (!obscure || addedRef.current) {
-                return;
-            }
-
-            const textContent = div.textContent?.trim() ?? "";
-
-            div.style.position = "relative";
-
-            const r = div.getBoundingClientRect();
-            const bounds = getAllLeterBounds(div).map((b) => ({
-                ...b,
-                x: b.x - r.x,
-                y: b.y - r.y,
-            }));
-
-            const keyTag = "em";
-            const hasKeyTag = !!div.querySelector(keyTag);
-            const indexSet = new Set();
-
-            if (!hasKeyTag) {
-                for (let i = 0; i < textContent.length * 0.75; i++) {
-                    const j = Math.floor(Math.random() * textContent.length);
-                    if (textContent[j] === "") {
-                        continue;
-                    }
-                    indexSet.add(j);
-                }
-            }
-
-            const filteredBounds = bounds.filter((b, i) => {
-                if (obscure) {
-                    if (hasKeyTag) {
-                        if (b.tagName !== keyTag) return false;
-                    } else if (!indexSet.has(i)) {
-                        return false;
-                    }
-                }
-                return true;
-            });
-            const reviewCount = face.card ? face.card.numRecall : 0;
-            const j = reviewCount % filteredBounds.length;
-            const k = (reviewCount + 1) % filteredBounds.length;
-
-            let i = -1;
-            for (const b of filteredBounds) {
-                i++;
-
-                if (filteredBounds.length <= 2 && i !== j) continue;
-                else if (i !== j && i !== k) continue;
-
-                const canvasCopy = canvasesRef.current[b.text];
-                const canvas = createBlotCanvas(b, canvasCopy);
-
-                if (!canvasCopy && canvasesRef.current) {
-                    canvasesRef.current[b.text] = canvas;
-                }
-
-                const fadeTime = 2.0;
-                let hidden = false;
-                canvas.onclick = () => {
-                    if (hidden) {
-                        hidden = false;
-                        canvas.style.cursor = "pointer";
-                        canvas.style.transition = "";
-                        canvas.style.opacity = "1";
-                        return;
-                    }
-
-                    canvas.style.transition = `opacity ${fadeTime}s`;
-                    canvas.style.cursor = "none";
-                    canvas.style.opacity = "0";
-                    setTimeout(() => {
-                        hidden = true;
-                        canvas.style.cursor = "pointer";
-                        //canvas.remove();
-                    }, fadeTime * 1000);
-                };
-                canvas.style.cursor = "pointer";
-
-                div.appendChild(canvas);
-            }
-            //addedRef.current = true;
-        }
-
-        const st = CardFace;
-
-        return (
-            <CardFace.Div>
-                {face.contents?.map((c, i) => {
-                    let content = <div />;
-                    if (typeof c === "string") {
-                        content = (
-                            <st.ContentContainer ref={onRef}>
-                                <st.Content
-                                    dangerouslySetInnerHTML={{
-                                        __html: marked.parse(c),
-                                    }}
-                                />
-                            </st.ContentContainer>
-                        );
-                    } else if (c.name === "image") {
-                        content = (
-                            <img src={`${config.baseUrlDecks}/${card?.deckName}/${c.value}`} />
-                        );
-                    } else if (c.name === "audio" && c.value.trim()) {
-                        content = (
-                            <AudioPlayer
-                                baseSrc={config.baseUrlDecks}
-                                src={c.value
-                                    .split(",")
-                                    .map((s) => `${card?.deckName}/${s}`)
-                                    .join(",")}
-                            />
-                        );
-                    }
-                    return <div key={card?.path + "-" + i}>{content}</div>;
-                })}
-            </CardFace.Div>
-        );
-    },
-
-    ContentContainer: styled.div`
-        position: relative;
-        font-size: 180%;
-
-        p {
-            margin: 10px 0;
-        }
-        em,
-        strong {
-            color: #ccffcc;
-            font-size: 110%;
-            vertical-align: middle;
-        }
-    `,
-    Content: styled.div``,
-    Noise: styled.canvas`
-        width: 100%;
-        height: 100%;
-        position: absolute;
-        top: 0;
-        left: 0;
-        border: 1px solid red;
-    `,
-
-    Div: styled.div`
-        position: relative;
-        /*text-align: center;*/
-        p {
-            margin-top: 15px;
-            margin-bottom: 2px;
-        }
-        img {
-            max-height: 35vh;
-            margin: 10px auto;
-            display: block;
-        }
-    `,
-};
+export const CardView = memo(
+    CardView$.View,
+    (prev, props) => prev.card.contents === props.card.contents,
+);

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"io/ioutil"
 
 	_ "github.com/glebarez/go-sqlite"
 	"github.com/jmoiron/sqlx"
@@ -12,40 +11,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-/*
-
-table userData
-  key
-  value
-  ---------------
-  key, value
-  last_post_fetch, 0
-  last_reddit_request
-  last_youtube_request
-  intro_complete, 0
-  distractionIndex
-
-
-
-table distraction
-  filename # relative to db file
-  md5
-  data # json
-  # { type, link, ...}
-  # if user renames a file
-  # find a row with matching md5, then update filename
-
-table reddit_requests
-  type # hot, top, random
-  subname
-  after
-  count
-
-table youtube_requests
-	searchQuery
-	pageNum
-*/
-
+// TODO: this is pain, just use strings
+// or just plain consts
 var UserDataKeys = struct {
 	IntroCompleted     int
 	DistractionIndex   int
@@ -56,7 +23,8 @@ var UserDataKeys = struct {
 	IsDownloading int
 	NumToDownload int
 
-	TextEditor int
+	TextEditor         int
+	LastUsedCollection int
 }{
 	IntroCompleted:     1,
 	DistractionIndex:   2,
@@ -67,7 +35,8 @@ var UserDataKeys = struct {
 	IsDownloading: 6,
 	NumToDownload: 7,
 
-	TextEditor: 8,
+	TextEditor:         8,
+	LastUsedCollection: 9,
 }
 
 type DBAPI struct {
@@ -155,10 +124,13 @@ func (self *DBAPI) RegisterDistraction(filename, dtype, md5Sum string, data any)
 
 func (self *App) InitDB() {
 	db, err := sqlx.Open("sqlite", self.config.DBFile)
+	db.SetMaxOpenConns(1)
+
 	if err != nil {
 		self.Debugf(err.Error())
 	}
-	schema := lo.Must(ioutil.ReadFile("schema.sql"))
+
+	schema := lo.Must(assets.ReadFile("schema.sql"))
 	db.MustExec(string(schema))
 
 	self.dbAPI = &DBAPI{db, self.ctx}
