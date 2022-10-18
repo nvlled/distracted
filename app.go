@@ -67,7 +67,7 @@ func (self *App) startup(ctx context.Context) {
 		runtime.Hide(ctx)
 	}
 
-	runtime.LogSetLogLevel(ctx, logger.DEBUG)
+	runtime.LogSetLogLevel(ctx, logger.INFO)
 	runtime.WindowSetDarkTheme(self.ctx)
 
 	self.InitDB()

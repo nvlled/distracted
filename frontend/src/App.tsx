@@ -2,20 +2,28 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import * as app from "../wailsjs/go/main/App";
 import * as runtime from "../wailsjs/runtime";
-import { atom, useAtom } from "jotai";
-import { UserStart } from "./userstart";
+import { useAtom } from "jotai";
 import { appState } from "./state";
-import { GrindStudySession } from "./SessionDrill";
-import { DailyStudySession } from "./SessionPrepare";
 import { Card } from "./card";
 import styled from "styled-components";
-import { Action, shuffle } from "./lib";
+import { Action } from "./lib";
 import { config as globalConfig } from "./config";
 
-import { cardEvents, constants } from "./api";
-import { Notes } from "./Notes";
-import { SequentRecap } from "./discovery";
+import { cardEvents } from "./api";
 import { lt } from "./layout";
+
+import "./style.css";
+import "@shoelace-style/shoelace/dist/themes/dark.css";
+import "./water-dark.css";
+
+import { Playground } from "./playground";
+import { SequentRecap } from "./discovery";
+import { UserStart } from "./userstart";
+import { GrindStudySession } from "./SessionDrill";
+import { DailyStudySession } from "./SessionPrepare";
+import { Notes } from "./Notes";
+// web server path? or filesystem path?
+//setBasePath("../public/");
 
 function Settings({ onSubmit }: { onSubmit: Action }) {
     const [mainPage, setMainPage] = useAtom(appState.mainPage);
@@ -105,6 +113,7 @@ const ClearButton = styled.button`
 
 function App() {
     const [deckFiles, setDeckFiles] = useAtom(appState.deckFiles);
+    const [decks, setDecks] = useAtom(appState.decks);
     const [userData, setUserData] = useAtom(appState.userData);
     const [config, setConfig] = useAtom(appState.config);
     const [mainPage, setMainPage] = useAtom(appState.mainPage);
@@ -131,14 +140,16 @@ function App() {
     useEffect(() => {
         async function init() {
             const currentDeck = "japanese";
-            const [userData, cardFiles] = await Promise.all([
+            const [userData, cardFiles, decks] = await Promise.all([
                 app.GetUserData(),
                 app.ListCards(currentDeck),
+                app.GetDecks(),
             ]);
 
             setConfig(globalConfig);
             setUserData(userData);
             setDeckFiles({ ...deckFiles, [currentDeck]: cardFiles });
+            setDecks(decks);
 
             setMainPage("home");
             setInitialized(true);
@@ -179,6 +190,8 @@ function App() {
 
     return (
         <div id="App">
+            <Playground />
+            <hr />
             <SequentRecap />
             <hr />
 

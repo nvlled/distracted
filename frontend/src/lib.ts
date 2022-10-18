@@ -469,3 +469,7 @@ export function useInterval(running: boolean, millis: number, fn: Action) {
         return () => window.clearInterval(timerRef.current);
     }, [running, millis]);
 }
+
+export function identity<T>(x: T) {
+    return x;
+}

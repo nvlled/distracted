@@ -99,7 +99,7 @@ export namespace SequentRecap$ {
         useInterval(countdown > 0, 1000, () => {
             setCountdown((n) => n - 1);
             const p = audioPlayer.current;
-            if (p && !p.isPlaying() && p.stopDuration() >= 1300) {
+            if (p && !p.isPlaying() && p.stopDuration() >= 2500) {
                 p.play();
             }
         });
@@ -186,7 +186,7 @@ export namespace SequentRecap$ {
                         <div>??</div>
                         <ActionButton
                             onClick={() => onForgot(reviewingCards[index])}
-                            ref={(ref) => ref?.focus()}
+                            //ref={(ref) => ref?.focus()}
                         >
                             forgot
                         </ActionButton>

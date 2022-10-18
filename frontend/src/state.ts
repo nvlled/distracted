@@ -11,7 +11,12 @@ export const appState = {
     mainPage: atom("home" as MainPages),
     drillCards: atom([] as Card[]),
     currentDrillCard: atom(null as Card | null),
+
+    // TODO: remove
     deckFiles: atom({} as Record<string, main.CardFile[] | undefined>),
+
+    decks: atom([] as string[]),
+
     currentCard: atom(undefined as Card | undefined),
 
     distractionMode: atom(false),

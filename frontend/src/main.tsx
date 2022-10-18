@@ -1,13 +1,11 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 
-//import "normalize.css";
-import "./water-dark.css";
 //import "98.css";
 //import "./midnight-green.css";
 //import "./classless.css";
 //import "./classless-themes.css";
-import "./style.css";
+
 import App from "./App";
 import * as app from "../wailsjs/go/main/App";
 import { setConfig } from "./config";
@@ -15,6 +13,7 @@ import { setConfig } from "./config";
 async function main() {
     const container = document.getElementById("root");
     document.documentElement.setAttribute("data-theme", "dark");
+    document.documentElement.className = "sl-theme-dark";
 
     setConfig(await app.GetConfig());
     const root = createRoot(container!);

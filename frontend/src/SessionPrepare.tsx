@@ -13,9 +13,11 @@ import { app, main, constants } from "./api";
 import { Action1, Action2, formatDuration, OrderedSet, sleep, useAsyncEffect } from "./lib";
 import { Dialog } from "./dialog";
 import { CardView } from "./SessionDrill";
-import { lt } from "./layout";
+import { Flex, lt } from "./layout";
 import { appState } from "./state";
 import { useAtom } from "jotai";
+import { Button, Textarea } from "./shoelace";
+import type { TextareaRef } from "./shoelace";
 
 export function SearchTable({
     onSubmit,
@@ -512,23 +514,28 @@ export namespace ListEditor$ {
 
     export interface Controls {
         save: () => Promise<string[] | null>;
+        getText: () => string;
     }
 
     export const View = forwardRef(function (
         { listClassName, onSubmit, items, customAction }: Props,
         ref: ForwardedRef<Controls>,
     ) {
+        const [editing, setEditing] = useState(false);
         const [errorMessage, setErrorMessage] = useState("");
-        const textareaRef = useRef<HTMLTextAreaElement>();
+        //const textareaRef = useRef<HTMLTextAreaElement>();
+        const tf = useRef<TextareaRef>();
 
         useImperativeHandle(
             ref,
             () => ({
                 save: () => onSaveTextChanges(true),
+                getText: () => tf.current?.textContent ?? "",
             }),
             [],
         );
 
+        /*
         function onMountTextarea(elem: HTMLTextAreaElement) {
             if (!elem) {
                 return;
@@ -536,14 +543,15 @@ export namespace ListEditor$ {
             elem.focus();
             textareaRef.current = elem;
         }
+        */
 
         async function onSaveTextChanges(manual?: boolean) {
-            if (!textareaRef.current) {
+            if (!tf.current) {
                 return null;
             }
 
             setErrorMessage("");
-            const lines = textareaRef.current.value
+            const lines = tf.current.value
                 .split("\n")
                 .map((line) => line.trim())
                 .filter((line) => line.length > 0);
@@ -567,27 +575,50 @@ export namespace ListEditor$ {
                 onSubmit?.(newItems);
             }
 
-            textareaRef.current.value = newItems.join("\n");
+            tf.current.value = newItems.join("\n");
 
             return newItems;
         }
 
+        // TODO:
+        // The settings should automatically save, so no submit button
+        // but how to validate card paths?
+        // Just create another component, CardPathEditor
+        // that has no save button, instead a [check & clean],
+        // that will validate and clean the text lines
+
+        // TODO: convert TimeSpanInput value to seconds
+
         return (
-            <Container>
+            <Container invalid={!!errorMessage}>
                 <div>
-                    {!customAction && (
-                        <button onClick={() => onSaveTextChanges()}>save text changes</button>
-                    )}
                     <div>
-                        <div className="_error-message">{errorMessage}</div>
-                        <textarea defaultValue={items.join("\n")} ref={onMountTextarea} />
+                        <Flex justifyContent="end">
+                            {!customAction && (
+                                <Button size="small" onClick={() => onSaveTextChanges()}>
+                                    save text changes
+                                </Button>
+                            )}
+                        </Flex>
+                        {/*<textarea defaultValue={items.join("\n")} ref={onMountTextarea} />*/}
+                        <Textarea
+                            className="card-text-input"
+                            defaultValue={items.join("\n")}
+                            ref={tf}
+                            placeholder="example: deckname/card-filename.md"
+                            invalid
+                        >
+                            <div slot="help-text" className="error-help-text">
+                                {errorMessage}
+                            </div>
+                        </Textarea>
                     </div>
                 </div>
             </Container>
         );
     });
 
-    export const Container = styled.div<{ dragging?: boolean }>`
+    export const Container = styled.div<{ invalid?: boolean; dragging?: boolean }>`
         ._controls {
             font-size: 12px;
         }
@@ -596,7 +627,7 @@ export namespace ListEditor$ {
         }
 
         textarea {
-            height: 75vh;
+            height: 200px;
             background: white;
             color: black;
         }
@@ -604,6 +635,27 @@ export namespace ListEditor$ {
             white-space: pre;
             font-size: 18px;
             color: #f00;
+        }
+
+        .card-text-input {
+            .error-help-text {
+                white-space: pre;
+                color: var(--sl-color-danger-600);
+                margin-left: var(--sl-spacing-medium);
+            }
+
+            &[invalid]:not([disabled])::part(label),
+            &[invalid]:not([disabled])::part(help-text) {
+                color: var(--sl-color-danger-600);
+            }
+
+            &[invalid]:not([disabled])::part(base) {
+                border-color: var(--sl-color-danger-500);
+            }
+
+            &[invalid]:focus-within::part(base) {
+                box-shadow: 0 0 0 var(--sl-focus-ring-width) var(--sl-color-danger-500);
+            }
         }
     `;
 
@@ -615,6 +667,8 @@ export namespace ListEditor$ {
         ${(props) => (props.visible ? "" : "visibility: hidden")};
     `;
 }
+
+export const ListEditor = ListEditor$.View;
 
 export namespace SelectedCards$ {
     export interface Props {}
@@ -651,8 +705,6 @@ export namespace SelectedCards$ {
     const Container = styled.div``;
 }
 export const SelectedCards = SelectedCards$.View;
-
-export const ListEditor = ListEditor$.View;
 
 export function DailyStudySession({ onSubmit, edit: editProp }: DailyStudySession.Props) {
     const { lsKey } = DailyStudySession;

@@ -1,9 +1,9 @@
-import { createContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { LogTrace } from "../wailsjs/runtime/runtime";
 import { Card } from "./card";
 import { lt } from "./layout";
-import { Action, clamp, isSymbol, shuffle } from "./lib";
+import { Action, clamp, isSymbol, range, shuffle } from "./lib";
 
 const maxChar = 50;
 
@@ -481,3 +481,13 @@ namespace _PhraseSelect {
     }
 }
 export const PhraseSelect = _PhraseSelect.View;
+
+export function Space({ n = 1 }: { n?: number }) {
+    return (
+        <>
+            {range(n).map((i) => (
+                <React.Fragment key={i}>&nbsp;</React.Fragment>
+            ))}
+        </>
+    );
+}
