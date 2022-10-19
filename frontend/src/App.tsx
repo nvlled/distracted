@@ -116,6 +116,7 @@ function App() {
     const [decks, setDecks] = useAtom(appState.decks);
     const [userData, setUserData] = useAtom(appState.userData);
     const [config, setConfig] = useAtom(appState.config);
+    const [allUserCards, setAllUserCards] = useAtom(appState.allUserCards);
     const [mainPage, setMainPage] = useAtom(appState.mainPage);
     const [drillCards, setDrillCards] = useAtom(appState.drillCards);
     const [initialized, setInitialized] = useState(false);
@@ -140,16 +141,19 @@ function App() {
     useEffect(() => {
         async function init() {
             const currentDeck = "japanese";
-            const [userData, cardFiles, decks] = await Promise.all([
+            const [userData, cardFiles, decks, allUserCards] = await Promise.all([
                 app.GetUserData(),
                 app.ListCards(currentDeck),
                 app.GetDecks(),
+                app.ListAllCards(),
             ]);
 
             setConfig(globalConfig);
             setUserData(userData);
             setDeckFiles({ ...deckFiles, [currentDeck]: cardFiles });
             setDecks(decks);
+            setAllUserCards(allUserCards);
+            console.log(allUserCards.length);
 
             setMainPage("home");
             setInitialized(true);
@@ -191,8 +195,6 @@ function App() {
     return (
         <div id="App">
             <Playground />
-            <hr />
-            <SequentRecap />
             <hr />
 
             {mainPage === "intro" ? (

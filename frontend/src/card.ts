@@ -156,11 +156,11 @@ export const Card = {
         return "";
     },
 
-    getReviewCount(card: Card) {
+    getReviewCount(card: main.CardData) {
         return card.numForget + card.numRecall;
     },
 
-    getSecondsSinceLastReview(card: Card): number | undefined {
+    getSecondsSinceLastReview(card: main.CardData): number | undefined {
         if (card.numRecall + card.numForget === 0) {
             return undefined;
         }
@@ -169,18 +169,22 @@ export const Card = {
         return Math.max(duration, 0);
     },
 
-    getPhase(card: Card): CardPhase {
+    getPhase(card: main.CardData): CardPhase {
         const reviews = Card.getReviewCount(card);
         if (reviews === 0) return "new";
         if (card.proficiency <= config.maxLearnLevel) return "learn";
         return "review";
     },
-    isReviewing(card: Card) {
-        return Card.getPhase(card) === "review";
+    isNew(card: main.CardData) {
+        return Card.getReviewCount(card) === 0;
     },
-    isLearning(card: Card) {
-        return Card.getPhase(card) !== "review";
+    isReviewing(card: main.CardData) {
+        return Card.getReviewCount(card) > 0;
+        //return Card.getPhase(card) === "review";
     },
+    //isLearning(card: main.CardData) {
+    //    return Card.getPhase(card) !== "review";
+    //},
     isRecalledTodayDeprecated(card: Card) {
         return card.lastRecallDate === currentDate();
     },

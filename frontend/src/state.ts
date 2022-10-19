@@ -9,7 +9,11 @@ export const appState = {
     config: atom(main.Config.createFrom()),
     userData: atom(main.UserData.createFrom()),
     mainPage: atom("home" as MainPages),
+
     drillCards: atom([] as Card[]),
+
+    allUserCards: atom([] as main.CardData[]),
+
     currentDrillCard: atom(null as Card | null),
 
     // TODO: remove

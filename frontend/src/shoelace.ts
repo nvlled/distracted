@@ -7,7 +7,7 @@ export { default as Breadcrumb } from "@shoelace-style/shoelace/dist/react/bread
 export { default as BreadcrumbItem } from "@shoelace-style/shoelace/dist/react/breadcrumb-item";
 export { default as Button } from "@shoelace-style/shoelace/dist/react/button";
 export { default as ButtonGroup } from "@shoelace-style/shoelace/dist/react/button-group";
-export { default as Card } from "@shoelace-style/shoelace/dist/react/card";
+export { default as CardBox } from "@shoelace-style/shoelace/dist/react/card";
 export { default as Checkbox } from "@shoelace-style/shoelace/dist/react/checkbox";
 export { default as ColorPicker } from "@shoelace-style/shoelace/dist/react/color-picker";
 export { default as Details } from "@shoelace-style/shoelace/dist/react/details";
@@ -62,7 +62,7 @@ import { default as BreadcrumbRef } from "@shoelace-style/shoelace/dist/componen
 import { default as BreadcrumbItemRef } from "@shoelace-style/shoelace/dist/components/breadcrumb-item/breadcrumb-item";
 import { default as ButtonRef } from "@shoelace-style/shoelace/dist/components/button/button";
 import { default as ButtonGroupRef } from "@shoelace-style/shoelace/dist/components/button-group/button-group";
-import { default as CardRef } from "@shoelace-style/shoelace/dist/components/card/card";
+import { default as CardBoxRef } from "@shoelace-style/shoelace/dist/components/card/card";
 import { default as CheckboxRef } from "@shoelace-style/shoelace/dist/components/checkbox/checkbox";
 import { default as ColorPickerRef } from "@shoelace-style/shoelace/dist/components/color-picker/color-picker";
 import { default as DetailsRef } from "@shoelace-style/shoelace/dist/components/details/details";
@@ -118,7 +118,7 @@ export {
     BreadcrumbItemRef,
     ButtonRef,
     ButtonGroupRef,
-    CardRef,
+    CardBoxRef as CardRef,
     CheckboxRef,
     ColorPickerRef,
     DetailsRef,
@@ -165,7 +165,7 @@ export {
     VisuallyHiddenRef,
 };
 
-export namespace Slvars {
+export namespace Shoe {
     // Based on shoelace CSS variables
     // https://github.com/shoelace-style/shoelace/blob/current/src/themes/light.css
 

@@ -5,7 +5,7 @@ import styled from "styled-components";
 import { app } from "./api";
 import { Card } from "./card";
 import { Factor, FactorID, FactorTrial } from "./factors";
-import { lt } from "./layout";
+import { Block, Flex, lt } from "./layout";
 import {
     createPair,
     currentDate,
@@ -21,6 +21,8 @@ import { appState } from "./state";
 import { AudioPlayer, AudioPlayer$ } from "./AudioPlayer";
 import { DeckAudio } from "./DeckAudio";
 import { SelectedCards } from "./SessionPrepare";
+import { Button, CardBox, Checkbox, Dialog, Icon, Input, Range, RangeRef, Shoe } from "./shoelace";
+import { Space } from "./components";
 
 function useReviewingCards(deckName?: string) {
     const [allCards, setAllCards] = useState<Card[]>([]);
@@ -51,6 +53,7 @@ function useReviewingCards(deckName?: string) {
     return createPair(cards, setCards);
 }
 
+// TODO: use filtered allUserCards
 export namespace SequentRecap$ {
     export interface Props {}
     export function View({}: Props) {
@@ -130,36 +133,45 @@ export namespace SequentRecap$ {
 
         return (
             <Container>
-                <lt.Row justifyContent={"end"}>
-                    <button onClick={() => setShowSettings(!showSettings)}>⚙️</button>
-                </lt.Row>
-                <Settings show={showSettings}>
-                    <Row>
-                        <SettingsLabel>factor</SettingsLabel>
-                        {Object.keys(Factor)
-                            .concat("auto")
-                            .map((f) => (
-                                <label key={f}>
-                                    <input
-                                        type="checkbox"
-                                        checked={f === factorFilter}
-                                        onChange={() => onChangeFilter(f as FactorFilter)}
-                                    />
-                                    {f}
-                                </label>
-                            ))}
-                    </Row>
-                    <Row>
-                        <SettingsLabel>duration</SettingsLabel>
-                        <input
-                            type="range"
-                            min={defaultStartCountdown}
-                            max={defaultStartCountdown * 10}
-                            value={startCountdown}
-                            onChange={(e) => setStartCountdown(e.target.valueAsNumber)}
-                        />
-                    </Row>
-                </Settings>
+                <Flex justifyContent={"end"} mb={Shoe.spacing_large}>
+                    {!showSettings ? (
+                        <Space />
+                    ) : (
+                        <CardBox>
+                            <Row>
+                                <SettingsLabel>show</SettingsLabel>
+                                {Object.keys(Factor)
+                                    .concat("auto")
+                                    .map((f) => (
+                                        <label key={f}>
+                                            <Checkbox
+                                                checked={f === factorFilter}
+                                                onSlChange={() => onChangeFilter(f as FactorFilter)}
+                                            >
+                                                {f}
+                                            </Checkbox>
+                                        </label>
+                                    ))}
+                            </Row>
+                            <Row>
+                                <SettingsLabel>seconds / card</SettingsLabel>
+                                <Range
+                                    min={defaultStartCountdown}
+                                    max={defaultStartCountdown * 10}
+                                    value={startCountdown}
+                                    onSlChange={(e) => {
+                                        const target = e.target as RangeRef;
+                                        setStartCountdown(target.value);
+                                    }}
+                                />
+                            </Row>
+                        </CardBox>
+                    )}
+                    <Button onClick={() => setShowSettings(!showSettings)} size="small">
+                        <Icon slot="prefix" name="gear-wide" />
+                    </Button>
+                </Flex>
+
                 <lt.Row justifyContent={"center"} direction={"column"}>
                     {card.contextHint && <Hint>{card.contextHint}</Hint>}
                     {factor &&
@@ -181,18 +193,21 @@ export namespace SequentRecap$ {
                         {factor} ({countdown})
                     </div>
                     <br />
-                    <lt.Row cmr={30}>
-                        <ActionButton onClick={onHuh}>not sure (skip)</ActionButton>
-                        <div>??</div>
-                        <ActionButton
+                    <Flex>
+                        <Button variant="neutral" onClick={onHuh} size="large">
+                            not sure (skip)
+                        </Button>
+                        <Block mx={Shoe.spacing_medium}>??</Block>
+                        <Button
+                            size="large"
+                            variant="warning"
                             onClick={() => onForgot(reviewingCards[index])}
                             //ref={(ref) => ref?.focus()}
                         >
                             forgot
-                        </ActionButton>
-                    </lt.Row>
+                        </Button>
+                    </Flex>
                 </lt.Row>
-                <SelectedCards />
             </Container>
         );
     }
@@ -215,13 +230,12 @@ export namespace SequentRecap$ {
         text-align: right;
     `;
     const TestedFactor = styled.div`
-        font-size: 180%;
+        font-size: ${Shoe.font_size_2x_large};
         p {
             margin: 0;
         }
     `;
     const Hint = styled.div``;
-    const ActionButton = styled.button``;
 }
 export const SequentRecap = memo(SequentRecap$.View);
 

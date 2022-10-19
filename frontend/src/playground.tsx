@@ -8,7 +8,7 @@ import {
     Tab,
     TabPanel,
     Checkbox,
-    Slvars as Shoe,
+    Shoe,
     Input,
     Select,
     MenuItem,
@@ -17,18 +17,56 @@ import {
     TextareaRef,
     InputRef,
     SelectRef,
+    CheckboxRef,
 } from "./shoelace";
-import { ForwardedRef, forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { ForwardedRef, forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import styled from "styled-components";
 import { Block, Flex } from "./layout";
-import { Action1, identity, OrderedSet } from "./lib";
+import { Action1, identity, OrderedSet, tryJSONParse } from "./lib";
 import { config } from "./config";
 import { appState } from "./state";
 import { useAtom } from "jotai";
 import { SlAvatar } from "@shoelace-style/shoelace";
 import { Space } from "./components";
 import { ListEditor } from "./SessionPrepare";
-import { app } from "./api";
+import { app, main } from "./api";
+import { z } from "zod";
+import produce from "immer";
+import { Card } from "./card";
+import { SequentRecap } from "./discovery";
+
+namespace TimeSpan {
+    export type Unit = z.infer<typeof unitSchema>;
+    export const unitSchema = z.literal("days").or(z.literal("weeks")).or(z.literal("months"));
+    export const units: Unit[] = ["days", "weeks", "months"];
+
+    export const schema = z.object({
+        value: z.number(),
+        unit: unitSchema,
+    });
+    export type Type = z.infer<typeof schema>;
+
+    export function withinLast(unixTimeSec: number, span: Type) {
+        const now = Math.floor(Date.now() / 1000);
+        const seconds = getSeconds(span);
+        return unixTimeSec >= now - seconds;
+    }
+    export function getSeconds(span: Type) {
+        const day = 84600;
+        switch (span.unit) {
+            case "days":
+                return span.value * day;
+            case "weeks":
+                return span.value * 7 * day;
+            case "months":
+                return span.value * 30 * day;
+            default: {
+                console.warn(`unknown time unit: ${span.unit}`);
+                return 0;
+            }
+        }
+    }
+}
 
 export namespace Playground$ {
     export interface Props {}
@@ -46,6 +84,7 @@ export const Playground = Playground$.View;
 export namespace Home$ {
     export interface Props {}
     export function View({}: Props) {
+        const [collapseTabs, setCollapseTabs] = useState(false);
         const [showFind, setShowFind] = useState(false);
         const [showAdded, setShowAdded] = useState(false);
         const cardFilter = useRef<CardFilter$.Control>(null);
@@ -68,24 +107,64 @@ export namespace Home$ {
                 </Flex>
                 */}
 
-                <h2></h2>
                 <Details className="details" summary="Find cards to study">
                     <TabGroup placement="start" onSlTabShow={onChangeTab}>
                         <Tab slot="nav" panel="overview">
-                            Overview
+                            <Icon name="bricks" />
+                            {!collapseTabs && (
+                                <>
+                                    <Space />
+                                    Overview
+                                </>
+                            )}
                         </Tab>
                         <Tab slot="nav" panel="pick">
-                            Pick
+                            <Icon name="hand-index-thumb" />
+                            {!collapseTabs && (
+                                <>
+                                    <Space />
+                                    Pick
+                                </>
+                            )}
                         </Tab>
                         <Tab slot="nav" panel="search">
-                            Search
+                            <Icon name="search" />
+                            {!collapseTabs && (
+                                <>
+                                    <Space />
+                                    Search
+                                </>
+                            )}
                         </Tab>
                         <Tab slot="nav" panel="settings">
-                            settings
+                            <Icon name="gear-wide" />
+                            {!collapseTabs && (
+                                <>
+                                    <Space />
+                                    Settings
+                                </>
+                            )}
                         </Tab>
 
+                        <Block mb={Shoe.spacing_2x_small} className="collapse-tabs-container">
+                            <Button
+                                size="small"
+                                className="collapse-tabs"
+                                variant="default"
+                                onClick={() => setCollapseTabs(!collapseTabs)}
+                            >
+                                {collapseTabs ? (
+                                    <Icon slot="prefix" name="chevron-double-right" />
+                                ) : (
+                                    <Icon slot="prefix" name="chevron-double-left" />
+                                )}
+                            </Button>
+                        </Block>
+
                         <TabPanel name="overview">TODO</TabPanel>
-                        <TabPanel name="pick">TODO</TabPanel>
+                        <TabPanel name="pick">
+                            <SequentRecap />
+                        </TabPanel>
                         <TabPanel name="search">TODO</TabPanel>
                         <TabPanel name="settings">
                             <CardFilter ref={cardFilter} />
@@ -103,9 +182,41 @@ export namespace Home$ {
             cursor: pointer;
             text-decoration: underline;
         }
+        .collapse-tabs-container {
+            position: relative;
+            height: 0;
+            .collapse-tabs {
+                z-index: ${Shoe.z_index_toast};
+                position: absolute;
+                opacity: 0.5;
+                top: calc(${Shoe.spacing_2x_large} * 1);
+                left: calc(${Shoe.spacing_medium} * -1);
+                &::part(base) {
+                }
+                &::part(label) {
+                    font-size: ${Shoe.font_size_2x_small};
+                }
+                > sl-icon {
+                    font-size: ${Shoe.font_size_2x_small};
+                }
+            }
+        }
+
+        sl-icon {
+            font-size: ${Shoe.font_size_medium};
+        }
+        sl-tab-group::part(body) {
+            overflow: visible;
+        }
+
         > .details {
             &::part(base) {
+                overflow: visible;
                 background: inherit;
+            }
+            &::part(content) {
+                overflow: visible;
+                padding: ${Shoe.spacing_2x_small};
             }
             &::part(header) {
                 font-size: var(--sl-font-size-large);
@@ -123,19 +234,53 @@ export namespace Home$ {
 export const Home = Home$.View;
 
 export namespace CardFilter$ {
-    interface TimeSpan {
-        value: number;
-        unit: string;
-    }
     export interface Control {
         get: () => Settings;
     }
-    export interface Settings {
-        decks: "all" | string[];
-        reviewCards: { enabled: boolean; include: number; exclude: number };
-        newCards: boolean;
-        customCards: null | string[];
-    }
+
+    const Settings = z.object({
+        decks: z.object({
+            all: z.boolean(),
+            data: z.record(z.string(), z.boolean()),
+        }),
+        newCards: z.boolean(),
+        reviewCards: z.object({
+            enabled: z.boolean(),
+            all: z.boolean(),
+            include: z.object({
+                enabled: z.boolean(),
+                value: TimeSpan.schema,
+            }),
+            exclude: z.object({
+                enabled: z.boolean(),
+                value: TimeSpan.schema,
+            }),
+        }),
+        customCards: z.object({
+            enabled: z.boolean(),
+            data: z.array(z.string()),
+        }),
+    });
+
+    type Settings = z.infer<typeof Settings>;
+
+    const defaultSettings: Settings = {
+        decks: {
+            all: true,
+            data: {},
+        },
+        newCards: false,
+        reviewCards: {
+            enabled: true,
+            all: true,
+            include: { enabled: false, value: { value: 1, unit: "days" } },
+            exclude: { enabled: false, value: { value: 1, unit: "days" } },
+        },
+        customCards: {
+            enabled: false,
+            data: [],
+        },
+    };
 
     export interface Props {
         onSubmit?: Action1<Settings>;
@@ -143,12 +288,7 @@ export namespace CardFilter$ {
 
     export const View = forwardRef(function ({ onSubmit }: Props, ref: ForwardedRef<Control>) {
         const [decks] = useAtom(appState.decks);
-        const [settings, setSettings] = useState<Settings>({
-            decks: "all",
-            reviewCards: { enabled: true, include: 0, exclude: 0 },
-            newCards: false,
-            customCards: [],
-        });
+        const [settings, setSettings] = useState<Settings>(defaultSettings);
 
         useImperativeHandle(
             ref,
@@ -160,31 +300,19 @@ export namespace CardFilter$ {
             [settings],
         );
 
-        function update(args: Partial<Settings>) {
-            console.log({ args });
-            setSettings({
-                ...settings,
-                ...(args as NonNullable<Settings>),
+        useEffect(() => {
+            setSettings(loadSettings());
+        }, []);
+
+        function update(fn: (arg: Settings) => void | unknown) {
+            const newSettings = produce(settings, (draft) => {
+                fn(draft);
             });
-        }
-        function updateReview(args: Partial<Settings["reviewCards"]>) {
-            update({
-                ...settings,
-                reviewCards: {
-                    ...settings.reviewCards,
-                    ...(args as NonNullable<Settings["reviewCards"]>),
-                },
-            });
+            saveSettings(newSettings);
+            setSettings(newSettings);
         }
 
-        const allDecks = settings.decks === "all";
-        const includeReview = settings.reviewCards.enabled;
-        const indent = Shoe.spacing_2x_large;
-
-        // TODO: update TimeSpan values
-        // TODO: use immer
-        // TODO: get all unparsed cards
-        console.log({ settings });
+        const indent = Shoe.spacing_medium;
 
         return (
             <Container>
@@ -192,13 +320,16 @@ export namespace CardFilter$ {
                     <h3>Filter cards</h3>
                     <div>
                         <Checkbox
-                            checked={allDecks}
-                            indeterminate={!allDecks}
-                            onSlChange={() => update({ decks: allDecks ? [] : "all" })}
+                            checked={settings.decks.all}
+                            indeterminate={!settings.decks.all}
+                            onSlChange={(e) =>
+                                update((settings) => (settings.decks.all = isChecked(e)))
+                            }
                         >
-                            Include from {allDecks ? "all" : ""} decks:
+                            Include from {settings.decks.all ? "all" : ""} decks:
                         </Checkbox>
-                        {settings.decks !== "all" && (
+
+                        {!settings.decks.all && (
                             <Flex
                                 className="deck-entries"
                                 direction="column"
@@ -208,7 +339,20 @@ export namespace CardFilter$ {
                                 cmr={Shoe.spacing_small}
                             >
                                 {decks.map((d) => (
-                                    <Checkbox key={d}>{d}</Checkbox>
+                                    <Checkbox
+                                        key={d}
+                                        value={d}
+                                        onSlChange={(e) => {
+                                            const target = e.target as CheckboxRef;
+                                            update(
+                                                (settings) =>
+                                                    (settings.decks.data[target.value] =
+                                                        target.checked),
+                                            );
+                                        }}
+                                    >
+                                        {d}
+                                    </Checkbox>
                                 ))}
                             </Flex>
                         )}
@@ -217,7 +361,9 @@ export namespace CardFilter$ {
                     <div>
                         <Checkbox
                             checked={settings.newCards}
-                            onSlChange={() => update({ newCards: !settings.newCards })}
+                            onSlChange={(e) =>
+                                update((settings) => (settings.newCards = isChecked(e)))
+                            }
                         >
                             Include new cards
                         </Checkbox>
@@ -225,14 +371,14 @@ export namespace CardFilter$ {
                     <br />
                     <div>
                         <Checkbox
-                            checked={includeReview}
-                            onSlChange={() =>
-                                updateReview({ enabled: !settings.reviewCards.enabled })
-                            }
+                            checked={settings.reviewCards.enabled}
+                            onSlChange={(e) => {
+                                update((settings) => (settings.reviewCards.enabled = isChecked(e)));
+                            }}
                         >
                             Include reviewing cards
                         </Checkbox>
-                        {includeReview && (
+                        {settings.reviewCards.enabled && (
                             <Flex
                                 direction="column"
                                 alignItems={"start"}
@@ -241,18 +387,16 @@ export namespace CardFilter$ {
                                 cmb={Shoe.spacing_x_small}
                             >
                                 <Checkbox
-                                    checked={
-                                        settings.reviewCards.enabled &&
-                                        settings.reviewCards.include === 0 &&
-                                        settings.reviewCards.exclude === 0
-                                    }
+                                    checked={settings.reviewCards.all}
                                     onSlChange={(e) => {
-                                        const checked: boolean = (e.target as any).checked;
-                                        const val = checked ? 0 : 1;
-                                        updateReview({
-                                            include: 0,
-                                            exclude: 0,
+                                        const newSettings = produce(settings, (s) => {
+                                            const r = s.reviewCards;
+                                            r.all = true;
+                                            r.include.enabled = false;
+                                            r.exclude.enabled = false;
                                         });
+                                        // force redraw
+                                        setSettings({ ...newSettings });
                                     }}
                                 >
                                     all
@@ -260,10 +404,12 @@ export namespace CardFilter$ {
 
                                 <div>
                                     <Checkbox
-                                        checked={settings.reviewCards.include > 0}
+                                        checked={settings.reviewCards.include.enabled}
                                         onSlChange={(e) =>
-                                            updateReview({
-                                                include: (e.target as any).checked ? 1 : 0,
+                                            update((settings) => {
+                                                const r = settings.reviewCards;
+                                                r.include.enabled = isChecked(e);
+                                                r.all = !(r.include.enabled || r.exclude.enabled);
                                             })
                                         }
                                     >
@@ -271,21 +417,24 @@ export namespace CardFilter$ {
                                     </Checkbox>
                                     <Space n={2} />
                                     <TimeSpanInput
-                                        disabled={settings.reviewCards.include === 0}
-                                        value={settings.reviewCards.include ?? 1}
+                                        disabled={!settings.reviewCards.include.enabled}
+                                        span={settings.reviewCards.include.value}
                                         onChange={(value) =>
-                                            updateReview({
-                                                include: value,
-                                            })
+                                            update(
+                                                (settings) =>
+                                                    (settings.reviewCards.include.value = value),
+                                            )
                                         }
                                     />
                                 </div>
                                 <div>
                                     <Checkbox
-                                        checked={settings.reviewCards.exclude > 0}
+                                        checked={settings.reviewCards.exclude.enabled}
                                         onSlChange={(e) =>
-                                            updateReview({
-                                                exclude: (e.target as any).checked ? 1 : 0,
+                                            update((settings) => {
+                                                const r = settings.reviewCards;
+                                                r.exclude.enabled = isChecked(e);
+                                                r.all = !(r.include.enabled || r.exclude.enabled);
                                             })
                                         }
                                     >
@@ -293,12 +442,13 @@ export namespace CardFilter$ {
                                     </Checkbox>
                                     <Space n={2} />
                                     <TimeSpanInput
-                                        disabled={settings.reviewCards.exclude === 0}
-                                        value={settings.reviewCards.exclude ?? 0}
+                                        disabled={!settings.reviewCards.exclude.enabled}
+                                        span={settings.reviewCards.exclude.value}
                                         onChange={(value) =>
-                                            updateReview({
-                                                exclude: value,
-                                            })
+                                            update(
+                                                (settings) =>
+                                                    (settings.reviewCards.exclude.value = value),
+                                            )
                                         }
                                     />
                                 </div>
@@ -308,19 +458,21 @@ export namespace CardFilter$ {
                     <br />
                     <div>
                         <Checkbox
-                            checked={settings.customCards !== null}
-                            onSlChange={() =>
-                                update({ customCards: settings.customCards !== null ? null : [] })
+                            checked={settings.customCards.enabled}
+                            onSlChange={(e) =>
+                                update((settings) => (settings.customCards.enabled = isChecked(e)))
                             }
                         >
                             Include custom cards
                         </Checkbox>
-                        {settings.customCards !== null && (
+                        {settings.customCards.enabled && (
                             <>
                                 <Block mt={Shoe.spacing_small} />
                                 <CardListEditor
-                                    items={settings.customCards}
-                                    onChange={(lines) => update({ customCards: lines })}
+                                    items={settings.customCards.data}
+                                    onChange={(lines) =>
+                                        update((settings) => (settings.customCards.data = lines))
+                                    }
                                 />
                             </>
                         )}
@@ -336,6 +488,22 @@ export namespace CardFilter$ {
             </Container>
         );
     });
+
+    const lsKey = "card-filter-settings";
+
+    function loadSettings() {
+        const res = Settings.safeParse(tryJSONParse(localStorage.getItem(lsKey) ?? ""));
+        if (!res.success) {
+            console.log("failed to load settings", res.error);
+            return { ...defaultSettings };
+        }
+        const settings = res.data;
+        return settings;
+    }
+    function saveSettings(settings: Settings) {
+        localStorage.setItem(lsKey, JSON.stringify(settings));
+    }
+
     const Container = styled.div`
         .deck-entries {
             min-height: 50px;
@@ -343,25 +511,60 @@ export namespace CardFilter$ {
             overflow-y: auto;
         }
     `;
+
+    function isChecked(e: Event): boolean {
+        return !!((e.target as any).checked ?? false);
+    }
+
+    export function filterCards(cards: main.CardData[], settings: Settings): main.CardData[] {
+        const customCardSet = new Set(settings.customCards.data);
+        const result: main.CardData[] = [];
+
+        const { reviewCards } = settings;
+
+        // TODO:
+        for (const card of cards) {
+            const isCustom = !settings.customCards.enabled || customCardSet.has(card.path);
+            const isNew = settings.newCards && Card.isNew(card);
+            const isReview = reviewCards.enabled && reviewCards.all && Card.isReviewing(card);
+
+            let includeCard = false;
+            includeCard ||= isCustom;
+            includeCard ||= isReview;
+            includeCard ||= isNew;
+
+            if (!includeCard && reviewCards.enabled) {
+                const lastUpdate = card.lastUpdate;
+                const { include, exclude } = reviewCards;
+                includeCard ||= include.enabled && TimeSpan.withinLast(lastUpdate, include.value);
+                includeCard ||= exclude.enabled && !TimeSpan.withinLast(lastUpdate, exclude.value);
+            }
+
+            if (includeCard) {
+                result.push(card);
+            }
+        }
+        return result;
+    }
 }
 export const CardFilter = CardFilter$.View;
 
 export namespace TimeSpanInput$ {
     export interface Props {
-        value: number;
-        unit?: string;
+        span: TimeSpan.Type;
         disabled?: boolean;
-        onChange: Action1<number>;
+        onChange: Action1<TimeSpan.Type>;
     }
-    export function View({ value, unit = "days", disabled, onChange }: Props) {
+    export function View({ span, disabled, onChange }: Props) {
         const input = useRef<InputRef>();
         const select = useRef<SelectRef>();
 
-        function onInputChange(days?: number, unit?: string) {
-            console.log({ days, unit });
-            if (!days || !unit) return;
-            days = getDays(days, unit);
-            onChange(days);
+        function onInputChange(value?: number, unit?: TimeSpan.Unit) {
+            if (!value || !unit) return;
+            onChange({
+                value,
+                unit,
+            });
         }
 
         return (
@@ -374,48 +577,39 @@ export namespace TimeSpanInput$ {
                         min={1}
                         max={1024}
                         disabled={disabled}
-                        valueAsNumber={Math.max(value, 0)}
+                        valueAsNumber={Math.max(span.value, 1)}
                         onSlChange={(e) =>
                             onInputChange(
                                 (e.target as any).valueAsNumber,
-                                select.current?.getValueAsArray()?.[0],
+                                select.current?.getValueAsArray()?.[0] as TimeSpan.Unit,
                             )
                         }
                     />
                     <Select
                         ref={select}
                         disabled={disabled}
-                        value={unit}
+                        value={span.unit}
                         onSlChange={(e) =>
                             onInputChange(input.current?.valueAsNumber, (e.target as any).value)
                         }
                     >
-                        <MenuItem value="days">days</MenuItem>
-                        <MenuItem value="weeks">weeks</MenuItem>
-                        <MenuItem value="months">months</MenuItem>
+                        {TimeSpan.units.map((val) => (
+                            <MenuItem key={val} value={val}>
+                                {val}
+                            </MenuItem>
+                        ))}
                     </Select>
                 </Flex>
             </Container>
         );
     }
+
     const Container = styled.div`
         display: inline-block;
         .num-input::part(form-control) {
             width: 5em;
         }
     `;
-
-    function getDays(days: number, unit: string) {
-        switch (unit) {
-            case "days":
-                return days;
-            case "weeks":
-                return days * 7;
-            case "months":
-                return days * 30;
-        }
-        return 0;
-    }
 }
 export const TimeSpanInput = TimeSpanInput$.View;
 
@@ -432,7 +626,7 @@ export namespace CardListEditor$ {
     }
 
     export const View = forwardRef(function (
-        { listClassName, onChange, items }: Props,
+        { onChange, items }: Props,
         ref: ForwardedRef<Controls>,
     ) {
         const [invalidFilenames, setInvalidFilenames] = useState<string[] | null>(null);
@@ -464,8 +658,6 @@ export namespace CardListEditor$ {
             setInvalidFilenames(null);
         }
 
-        // TODO: convert TimeSpanInput value to seconds
-
         return (
             <Container
                 valid={
@@ -484,7 +676,7 @@ export namespace CardListEditor$ {
                         {/*<textarea defaultValue={items.join("\n")} ref={onMountTextarea} />*/}
                         <Textarea
                             className="card-text-input"
-                            defaultValue={items.join("\n")}
+                            value={items.join("\n")}
                             ref={textareaRef}
                             placeholder="example: deckname/card-filename.md"
                             onSlInput={onInput}

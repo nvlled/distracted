@@ -849,3 +849,21 @@ func (self *App) GetReviewingCards(deckName string, count int) []*CardData {
 
 	return result
 }
+
+func (self *App) ListAllCards() ([]*CardData, error) {
+	decks, err := self.GetDecks()
+	if err != nil {
+		return nil, self.Error(err)
+	}
+	var result []*CardData
+	for _, deck := range decks {
+		for card := range self.enumerateCards(deck, &err) {
+			result = append(result, card)
+		}
+		if err != nil {
+			return nil, self.Error(err)
+
+		}
+	}
+	return result, nil
+}
