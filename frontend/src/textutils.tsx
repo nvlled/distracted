@@ -2,7 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { Action, Action1, randomElem } from "./lib";
 
-function createSpoilerCanvas(rect: Rect, copyCanvas?: HTMLCanvasElement) {
+export function createSpoilerCanvas(rect: Rect, copyCanvas?: HTMLCanvasElement) {
     const canvas = document.createElement("canvas");
     const color = "#990000";
 
@@ -87,7 +87,7 @@ function createSpoilerCanvas(rect: Rect, copyCanvas?: HTMLCanvasElement) {
     return canvas;
 }
 
-function createBlotCanvas(rect: Rect, copyCanvas?: HTMLCanvasElement) {
+export function createBlotCanvas(rect: Rect, copyCanvas?: HTMLCanvasElement) {
     const canvas = document.createElement("canvas");
     const color = "#990000";
 
@@ -149,7 +149,7 @@ interface Rect {
     text: string;
 }
 
-function getTextBounds(node: Node) {
+export function getTextBounds(node: Node) {
     if (node.nodeType != Node.TEXT_NODE) {
         return [];
     }
@@ -174,7 +174,7 @@ function getTextBounds(node: Node) {
     return result;
 }
 
-function getAllLeterBounds(elem: Node): Rect[] {
+export function getAllLeterBounds(elem: Node): Rect[] {
     const result: Rect[] = [];
 
     if (elem.nodeType === Node.TEXT_NODE) {
@@ -220,7 +220,6 @@ export function CharacterJumbler({ ch, onSolve, fontSize }: CharacterJumbler.Pro
         if (!self.current.initialized) {
             const indices = [];
             for (let n = 0; n < numCols * numCols; n++) {
-                const [a, b] = fromIndex(n);
                 indices.push(n);
             }
             const correctIndex = randomElem(indices) ?? 0;
@@ -423,19 +422,21 @@ export namespace CharacterJumbler {
 }
 
 export const TextJumbler = memo(
-    ({ text, onItemSolve, fontSize: fontSizeProp }: _TextJumbler.Props) => {
+    function TextJumbler({ text, onItemSolve, fontSize: fontSizeProp }: _TextJumbler.Props) {
         const [fontSize, setFontSize] = useState(fontSizeProp ?? 15);
         return (
             <_TextJumbler.Container>
                 <div className="_info">
-                    ℹ️ Try to solve only the ones you don't quite remember. Feel free to peek at the
-                    answer while answering it, but if you do, you should answer "no" as the answer.
+                    ℹ️ Try to solve only the ones you don&apos;t quite remember. Feel free to peek
+                    at the answer while answering it, but if you do, you should answer {'"no"'}as
+                    the answer.
                     <br />
                     <button onClick={() => setFontSize(Math.max(fontSize - 1, 5))}>-</button>
                     <button onClick={() => setFontSize(Math.min(fontSize + 1, 25))}>+</button>
                 </div>
-                {text.split("").map((c) => (
+                {text.split("").map((c, i) => (
                     <CharacterJumbler
+                        key={c + i}
                         ch={c}
                         fontSize={`${fontSize}vw`}
                         onSolve={() => onItemSolve?.(c)}

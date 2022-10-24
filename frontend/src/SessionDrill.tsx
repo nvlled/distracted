@@ -1,4 +1,6 @@
-import { memo, useEffect, useRef, useState } from "react";
+export {};
+
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { main } from "../wailsjs/go/models";
 import { Card } from "./card";
@@ -24,6 +26,7 @@ import ReactMarkdown from "react-markdown";
 
 const distractionSeconds = 1.0 * 60;
 const batchSize = 7;
+//
 
 namespace _GrindStudySession {
     export interface Props {
@@ -123,30 +126,33 @@ namespace _GrindStudySession {
             setLoading(false);
         }
 
-        function init(cards: Card[]) {
-            const state = (refs.state = SerializedState.load());
+        const init = useCallback(
+            function (cards: Card[]) {
+                const state = (refs.state = SerializedState.load());
 
-            cards = cards.map((c) => {
-                const stats = state.cardStatsMap[c.id];
-                if (stats) c = { ...c, ...stats };
-                return c;
-            });
+                cards = cards.map((c) => {
+                    const stats = state.cardStatsMap[c.id];
+                    if (stats) c = { ...c, ...stats };
+                    return c;
+                });
 
-            setCards(cards);
+                setCards(cards);
 
-            const { item: card, nextCounter } = ShortAlternating.nextDue(
-                state.counter,
-                refs.batchSize,
-                cards,
-            );
-            if (card) {
+                const { item: card, nextCounter } = ShortAlternating.nextDue(
+                    state.counter,
+                    refs.batchSize,
+                    cards,
+                );
                 console.log("current card>", card);
-                setCardID(card.id);
-            }
+                if (card) {
+                    setCardID(card.id);
+                }
 
-            refs.state.counter = nextCounter;
-            refs.batchSize = Math.min(refs.batchSize, cards.length);
-        }
+                refs.state.counter = nextCounter;
+                refs.batchSize = Math.min(refs.batchSize, cards.length);
+            },
+            [refs],
+        );
 
         useEffect(() => {
             if (refs.initialized) {
@@ -155,7 +161,7 @@ namespace _GrindStudySession {
 
             init(initCards);
             refs.initialized = true;
-        }, [initCards]);
+        }, [init, initCards, refs]);
 
         useEffect(() => {
             function onFocus() {
@@ -174,7 +180,7 @@ namespace _GrindStudySession {
                 window.removeEventListener("focus", onFocus);
                 window.removeEventListener("blur", onBlur);
             };
-        }, []);
+        }, [refs]);
 
         const currentCard = OrderedSet.get(cards, cardID);
         let body = <div />;
@@ -279,7 +285,7 @@ namespace _GrindStudySession {
             return true;
         }
         export function load() {
-            let state = serializer.load();
+            const state = serializer.load();
             return state;
         }
         export function save(state: T) {
@@ -304,8 +310,8 @@ function Reminders({ onSubmit }: { onSubmit: Action }) {
             <div>Friendly reminders</div>
             <ul>
                 <li>keep calm, and avoid being tense or anxious</li>
-                <li>try to remember, but don't think too hard</li>
-                <li>don't fret if you forget, the more you forget, the better</li>
+                <li>try to remember, but don&apos;t think too hard</li>
+                <li>don&apos;t fret if you forget, the more you forget, the better</li>
                 <li>stop if you feel symptoms of fatigue</li>
             </ul>
 
@@ -315,55 +321,3 @@ function Reminders({ onSubmit }: { onSubmit: Action }) {
         </div>
     );
 }
-
-export namespace CardView$ {
-    export interface Props {
-        card: Card;
-    }
-    export function View({ card: cardProp }: Props) {
-        const [card] = useCardWatch(cardProp);
-        async function onFilenameClick() {
-            await app.OpenCardFile(card.path);
-        }
-        return (
-            <Container>
-                <CardFilename onClick={onFilenameClick}>{card.filename}</CardFilename>
-                <ReactMarkdown
-                    children={card.contents}
-                    components={{
-                        a({ node, ...props }) {
-                            const href = props.href;
-                            let lines = [];
-                            for (const c of node.children) {
-                                if (c.type === "text") {
-                                    lines.push(c.value);
-                                }
-                            }
-                            const content = lines.join(" ");
-
-                            if (href === "sound" || href == "audio") {
-                                const a = (
-                                    <AudioPlayer src={Card.getUrlPath(card.deckName, content)} />
-                                );
-                                return a;
-                            }
-                            return <a href="#">{content}</a>;
-                        },
-                    }}
-                />
-            </Container>
-        );
-    }
-    const Container = styled.div``;
-    const CardFilename = styled.div`
-        text-align: center;
-        font-size: 12px;
-        text-decoration: underline;
-        cursor: pointer;
-    `;
-}
-
-export const CardView = memo(
-    CardView$.View,
-    (prev, props) => prev.card.contents === props.card.contents,
-);

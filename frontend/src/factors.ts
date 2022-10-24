@@ -20,7 +20,7 @@ export type FactorTrial = { tested: FactorID; presented: FactorID; observation: 
 export type ProficiencyArg = number | FactorValues;
 
 export const Factors = {
-    create(text: number = 0, sound: number = text, meaning: number = text): FactorValues {
+    create(text = 0, sound = text, meaning = text): FactorValues {
         return {
             meaning,
             sound,
@@ -54,16 +54,16 @@ export const Factors = {
         for (const [id, value] of Object.entries(Factors.get(proficiency))) {
             if (value !== null) ids.push(id as FactorID);
         }
-        return randomElem(ids)! as FactorID;
+        return (randomElem(ids) ?? "meaning") as FactorID;
     },
     getEdgeFactor(proficiency: ProficiencyArg, type: "min" | "max" | "mid") {
         const factors = Factors.get(proficiency);
-        let result: { id: FactorID; value: number } = { id: "meaning", value: 0 };
+        const result: { id: FactorID; value: number } = { id: "meaning", value: 0 };
 
         let min = Number.POSITIVE_INFINITY;
         let max = Number.NEGATIVE_INFINITY;
         let mid = 0;
-        for (const [factorID, value] of Object.entries(factors)) {
+        for (const [, value] of Object.entries(factors)) {
             if (value == null) continue;
             min = Math.min(min, value);
             max = Math.min(max, value);
@@ -73,7 +73,7 @@ export const Factors = {
             //    result = { id: factorID as FactorID, value };
             //}
         }
-        for (const [factorID, value] of Object.entries(factors)) {
+        for (const [, value] of Object.entries(factors)) {
             if (value == null) continue;
             if (value > min && value < max) {
                 mid = value;
@@ -98,7 +98,7 @@ export const Factors = {
         const factors = Factors.get(proficiency);
         let len = 0;
         let sum = 0;
-        for (const [id, value] of Object.entries(factors)) {
+        for (const [, value] of Object.entries(factors)) {
             if (value != null) {
                 sum += value;
                 len++;
@@ -115,7 +115,7 @@ export const Factors = {
             return proficiency;
         }
         const factors = Factors.createEmpty();
-        for (const [key, val] of Object.entries(Factor)) {
+        for (const [key] of Object.entries(Factor)) {
             const factor = key as FactorID;
             if (!availableFactors || availableFactors.has(factor)) {
                 factors[factor] = Factors.getFactorValue(proficiency, factor);
@@ -127,11 +127,10 @@ export const Factors = {
         if (typeof proficiency === "number") return proficiency as Proficiency;
         const factors = proficiency;
         let result = 0;
-        for (let [factor, i] of Factors.entries(factors)) {
-            i = i ?? 0;
+        for (const [factor, val] of Factors.entries(factors)) {
+            const i = val ?? 0;
             const n = FactorNumDigits;
             const v = Factor[factor] ?? 0;
-            //console.log(`${v} * 10 ** (${i} * ${n})`);
             result += i * 10 ** (v * n);
         }
         return result as Proficiency;

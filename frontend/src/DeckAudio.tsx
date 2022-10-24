@@ -64,10 +64,15 @@ const serializer = new LocalStorageSerializer({}, "audio-volumes", function (
 
 export const DeckAudio = {
     _playID: 0,
-    _audio: document.createElement("audio"),
     _volumes: {} as Record<string, number | undefined>,
     _gainNode: null as GainNode | null,
     _intialized: false,
+    _audio: (() => {
+        const audio = document.createElement("audio");
+        audio.muted = true;
+        audio.autoplay = true;
+        return audio;
+    })(),
 
     _toRelative(src: string) {
         const origin = location.origin + "/";
@@ -79,9 +84,12 @@ export const DeckAudio = {
 
     _init() {
         if (DeckAudio._intialized) return;
+        DeckAudio._audio = document.createElement("audio");
 
         const ctx = new window.AudioContext();
         const audio = DeckAudio._audio;
+        audio.muted = true;
+
         //source = ctx.createMediaElementSource(audio);
         const source = new MediaElementAudioSourceNode(ctx, {
             mediaElement: audio,
@@ -98,6 +106,7 @@ export const DeckAudio = {
 
     async playAudioElem(audio: HTMLAudioElement): Promise<void> {
         DeckAudio._init();
+        audio.muted = false;
 
         const src = decodeURIComponent(DeckAudio._toRelative(audio.src));
         const volume = DeckAudio._volumes[src] ?? 1;
@@ -140,6 +149,8 @@ export const DeckAudio = {
         }
     },
     async play(arg: Card | string): Promise<void> {
+        if (!canPlay) return;
+
         await DeckAudio.stop();
         const audio = DeckAudio._audio;
         const id = ++DeckAudio._playID;
@@ -209,5 +220,16 @@ export const DeckAudio = {
     },
     */
 };
+
+let canPlay = false;
+export function canPlayAudio() {
+    return canPlay;
+}
+
+function onWindowClick() {
+    canPlay = true;
+    window.removeEventListener("click", onWindowClick);
+}
+window.addEventListener("click", onWindowClick);
 
 //DeckAudio._init();

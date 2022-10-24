@@ -109,6 +109,10 @@ func (self *App) startNotifier(id int, seconds int) {
 	delete(self.notifierIDs, id)
 }
 
+func (self *App) Notify(title, message string) {
+	beeep.Notify(title, message, "icon.png")
+}
+
 func (self *App) StartBreakTime(seconds int) int {
 	id := self.notifierID
 	self.notifierID++
@@ -510,6 +514,9 @@ func (self *App) GetDailyStudySession() (*StudySession, error) {
 func (self *App) GetDailyStudyCards() ([]CardData, error) {
 	return self.GetStudySessionCardsToday(DefaultStudyName)
 }
+func (self *App) GetDailyStudyCardIds() ([]int64, error) {
+	return self.GetStudySessionCardIDsToday(DefaultStudyName)
+}
 
 func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, error) {
 	date := self.CurrentDate()
@@ -576,6 +583,33 @@ func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, erro
 
 }
 
+func (self *App) GetStudySessionCardIDsToday(sessionName string) ([]int64, error) {
+	date := self.CurrentDate()
+	db := self.dbAPI.db
+
+	query := "SELECT `c`.`ROWID` AS `id` " +
+		"FROM `study_session_cards` `ssc` JOIN `cards` `c` ON `ssc`.`cardID` = `c`.`ROWID` JOIN `study_sessions` `sc` ON `sc`.`ROWID` = `ssc`.`sessionID` " +
+		"WHERE `sc`.`name` = $1 AND `sc`.`date` = $2 ORDER BY `ssc`.`order`, `c`.`ROWID` ASC"
+
+	type Row struct {
+		ID int64 `db:"id"`
+	}
+	var rows []Row
+	err := db.Select(&rows, query, sessionName, date)
+
+	if err != nil {
+		return nil, self.Error(err)
+	}
+
+	result := []int64{}
+	for _, row := range rows {
+		result = append(result, row.ID)
+	}
+
+	return result, nil
+
+}
+
 func (self *App) GetDecks() ([]string, error) {
 	decksPath := self.config.DecksDir
 	if !DirectoryExists(self.ctx, decksPath) {
@@ -611,7 +645,7 @@ func (self *App) CreateStudySession(sessionName string, sessionType int, cardpat
 	if err := tx.Get(&currentID, "SELECT `ROWID` FROM `study_sessions` WHERE `name` = $1 AND `date` = $2", sessionName, date); err != nil && err != sql.ErrNoRows {
 		return self.Error(err)
 	} else if err == nil && sessionName != DefaultStudyName {
-		fmt.Printf("huh: %v, %v", sessionName, DefaultStudyName)
+		fmt.Printf("huh: %v, %v\n", sessionName, DefaultStudyName)
 		return self.Error(errorList.ErrSessionNameAlreadyUsed)
 	}
 	alreadyExists := currentID >= 0
@@ -633,9 +667,7 @@ func (self *App) CreateStudySession(sessionName string, sessionType int, cardpat
 		} else {
 			sessionID = id
 		}
-	}
-
-	if alreadyExists {
+	} else {
 		_, err := tx.Exec("DELETE FROM `study_session_cards` WHERE `sessionID` = $1", sessionID)
 		if err != nil {
 			return self.Error(err)

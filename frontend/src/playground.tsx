@@ -1,8 +1,6 @@
 import {
-    Alert,
     Button as Button,
     Icon as Icon,
-    AlertRef,
     Details,
     TabGroup,
     Tab,
@@ -18,22 +16,40 @@ import {
     InputRef,
     SelectRef,
     CheckboxRef,
+    EventUtil,
+    TabGroupRef,
+    TabRef,
+    CardBox,
 } from "./shoelace";
-import { ForwardedRef, forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+    ForwardedRef,
+    forwardRef,
+    useCallback,
+    useEffect,
+    useImperativeHandle,
+    useRef,
+    useState,
+} from "react";
 import styled from "styled-components";
 import { Block, Flex } from "./layout";
-import { Action1, identity, OrderedSet, tryJSONParse } from "./lib";
-import { config } from "./config";
+import { Action, Action1, Action2, OrderedSet, shuffle, tryJSONParse } from "./lib";
 import { appState } from "./state";
 import { useAtom } from "jotai";
-import { SlAvatar } from "@shoelace-style/shoelace";
 import { Space } from "./components";
-import { ListEditor } from "./SessionPrepare";
 import { app, main } from "./api";
 import { z } from "zod";
 import produce from "immer";
 import { Card } from "./card";
 import { SequentRecap } from "./discovery";
+import { config } from "./config";
+
+// TODO: put volume control on AudioPlayer component
+//       - double click to show control
+//       - show tooltip help
+// TODO: reset all cards stats for testing
+
+// TODO: overview
+// TODO: modify search
 
 namespace TimeSpan {
     export type Unit = z.infer<typeof unitSchema>;
@@ -69,110 +85,147 @@ namespace TimeSpan {
 }
 
 export namespace Playground$ {
-    export interface Props {}
-    export function View({}: Props) {
-        return (
-            <Container>
-                <Home />
-            </Container>
-        );
+    export interface Props {
+        onSubmit: Action;
     }
-    const Container = styled.div``;
-}
-export const Playground = Playground$.View;
-
-export namespace Home$ {
-    export interface Props {}
-    export function View({}: Props) {
-        const [collapseTabs, setCollapseTabs] = useState(false);
-        const [showFind, setShowFind] = useState(false);
+    export function View({ onSubmit }: Props) {
+        const [showDiscover, setShowDiscover] = useState(false);
         const [showAdded, setShowAdded] = useState(false);
-        const cardFilter = useRef<CardFilter$.Control>(null);
+
+        const [collapseTabs, setCollapseTabs] = useState(false);
+        const [allUserCards] = useAtom(appState.allUserCards);
+        const [drillCards] = useAtom(appState.drillCards);
+        const [filterOptions, setFilterOptions] = useState<CardFilter$.Options | undefined>(
+            undefined,
+        );
+        const [filteredCards, setFilteredCards] = useState<main.CardData[]>([]);
+        const [discoverTab, setDiscoverTab] = useState("");
+        const cardFilterRef = useRef<CardFilter$.Control>(null);
+
+        const onLoad = useCallback((filter: CardFilter$.Options) => {
+            setFilterOptions(filter);
+        }, []);
 
         function onChangeTab(e: Event) {
-            console.log(cardFilter.current?.get());
+            const panel = (e.target as any).activeTab.panel ?? "";
+            if (panel !== "cards") {
+                setDiscoverTab(panel);
+            }
+            setFilterOptions(cardFilterRef.current?.get());
         }
+
+        function onStart() {
+            app.CreateStudySession(
+                config.defaultStudyName,
+                config.studySessionTypes.normal,
+                drillCards.map((c) => c.path),
+            );
+            onSubmit();
+        }
+
+        useEffect(() => {
+            let rawCards = filterOptions
+                ? CardFilter$.filterCards(allUserCards, filterOptions)
+                : allUserCards;
+
+            rawCards = shuffle(rawCards);
+            setFilteredCards(rawCards);
+        }, [allUserCards, filterOptions]);
+
+        const discoverContent = (
+            <>
+                <TabGroup placement="start" onSlTabShow={onChangeTab} activation="manual">
+                    <Tab slot="nav" panel="overview">
+                        <Icon name="bricks" />
+                        {!collapseTabs && (
+                            <>
+                                <Space />
+                                Overview
+                            </>
+                        )}
+                    </Tab>
+                    <Tab slot="nav" panel="pick">
+                        <Icon name="hand-index-thumb" />
+                        {!collapseTabs && (
+                            <>
+                                <Space />
+                                Pick
+                            </>
+                        )}
+                    </Tab>
+                    <Tab slot="nav" panel="search">
+                        <Icon name="search" />
+                        {!collapseTabs && (
+                            <>
+                                <Space />
+                                Search
+                            </>
+                        )}
+                    </Tab>
+                    <Tab slot="nav" panel="cards">
+                        <Icon name="gear-wide" />
+                        {!collapseTabs && (
+                            <>
+                                <Space />
+                                Cards
+                            </>
+                        )}
+                    </Tab>
+
+                    <Block mb={Shoe.spacing_small_2x} className="collapse-tabs-container">
+                        <Button
+                            size="small"
+                            className="collapse-tabs"
+                            variant="default"
+                            onClick={() => setCollapseTabs(!collapseTabs)}
+                        >
+                            {collapseTabs ? (
+                                <Icon slot="prefix" name="chevron-double-right" />
+                            ) : (
+                                <Icon slot="prefix" name="chevron-double-left" />
+                            )}
+                        </Button>
+                    </Block>
+
+                    <TabPanel name="overview">{discoverTab === "overview" && "TODO"}</TabPanel>
+                    <TabPanel name="pick">
+                        {discoverTab === "pick" && filterOptions && (
+                            <SequentRecap cardData={filteredCards} />
+                        )}
+                    </TabPanel>
+                    <TabPanel name="search">{discoverTab === "search" && "TODO"}</TabPanel>
+                    <TabPanel name="cards">
+                        <CardFilter ref={cardFilterRef} onLoad={onLoad} />
+                    </TabPanel>
+                </TabGroup>
+            </>
+        );
+
+        const addedContent = (
+            <>
+                <SelectedCards onSubmit={onStart} />
+            </>
+        );
 
         return (
             <Container>
-                {/*
-                <Flex justifyContent={"space-between"}>
-                    <h2>Find cards to study</h2>
-                    <Button caret></Button>
-                </Flex>
-
-                <Flex justifyContent={"space-between"}>
-                    <h2>Added cards</h2>
-                    <Button caret></Button>
-                </Flex>
-                */}
-
-                <Details className="details" summary="Find cards to study">
-                    <TabGroup placement="start" onSlTabShow={onChangeTab}>
-                        <Tab slot="nav" panel="overview">
-                            <Icon name="bricks" />
-                            {!collapseTabs && (
-                                <>
-                                    <Space />
-                                    Overview
-                                </>
-                            )}
-                        </Tab>
-                        <Tab slot="nav" panel="pick">
-                            <Icon name="hand-index-thumb" />
-                            {!collapseTabs && (
-                                <>
-                                    <Space />
-                                    Pick
-                                </>
-                            )}
-                        </Tab>
-                        <Tab slot="nav" panel="search">
-                            <Icon name="search" />
-                            {!collapseTabs && (
-                                <>
-                                    <Space />
-                                    Search
-                                </>
-                            )}
-                        </Tab>
-                        <Tab slot="nav" panel="settings">
-                            <Icon name="gear-wide" />
-                            {!collapseTabs && (
-                                <>
-                                    <Space />
-                                    Settings
-                                </>
-                            )}
-                        </Tab>
-
-                        <Block mb={Shoe.spacing_2x_small} className="collapse-tabs-container">
-                            <Button
-                                size="small"
-                                className="collapse-tabs"
-                                variant="default"
-                                onClick={() => setCollapseTabs(!collapseTabs)}
-                            >
-                                {collapseTabs ? (
-                                    <Icon slot="prefix" name="chevron-double-right" />
-                                ) : (
-                                    <Icon slot="prefix" name="chevron-double-left" />
-                                )}
-                            </Button>
-                        </Block>
-
-                        <TabPanel name="overview">TODO</TabPanel>
-                        <TabPanel name="pick">
-                            <SequentRecap />
-                        </TabPanel>
-                        <TabPanel name="search">TODO</TabPanel>
-                        <TabPanel name="settings">
-                            <CardFilter ref={cardFilter} />
-                        </TabPanel>
-                    </TabGroup>
+                <Details
+                    className="details"
+                    summary={`Find cards to study ${
+                        filterOptions ? `(${filteredCards.length})` : ""
+                    }`}
+                    onSlShow={() => setShowDiscover(true)}
+                    onSlHide={() => setShowDiscover(false)}
+                >
+                    {discoverContent}
                 </Details>
-                <Details className="details" summary="Added cards">
-                    TODO
+                <Details
+                    className="details"
+                    summary={`Cards for today (${drillCards.length})`}
+                    onSlShow={() => setShowAdded(true)}
+                    onSlHide={() => setShowAdded(false)}
+                >
+                    {addedContent}
                 </Details>
             </Container>
         );
@@ -189,7 +242,7 @@ export namespace Home$ {
                 z-index: ${Shoe.z_index_toast};
                 position: absolute;
                 opacity: 0.5;
-                top: calc(${Shoe.spacing_2x_large} * 1);
+                top: calc(${Shoe.spacing_large_2x} * 1);
                 left: calc(${Shoe.spacing_medium} * -1);
                 &::part(base) {
                 }
@@ -216,14 +269,16 @@ export namespace Home$ {
             }
             &::part(content) {
                 overflow: visible;
-                padding: ${Shoe.spacing_2x_small};
+                padding: ${Shoe.spacing_small_2x};
             }
             &::part(header) {
                 font-size: var(--sl-font-size-large);
-                text-decoration: underline;
+            }
+            sl-tab-panel::part(base) {
+                padding: ${Shoe.spacing_small} ${Shoe.spacing_large};
             }
         }
-        > .details > .settings {
+        > .details > .cards {
             &::part(base) {
                 border: 0;
                 background: inherit;
@@ -231,14 +286,14 @@ export namespace Home$ {
         }
     `;
 }
-export const Home = Home$.View;
+export const Playground = Playground$.View;
 
 export namespace CardFilter$ {
     export interface Control {
-        get: () => Settings;
+        get: () => Options;
     }
 
-    const Settings = z.object({
+    export const optionsSchema = z.object({
         decks: z.object({
             all: z.boolean(),
             data: z.record(z.string(), z.boolean()),
@@ -262,9 +317,9 @@ export namespace CardFilter$ {
         }),
     });
 
-    type Settings = z.infer<typeof Settings>;
+    export type Options = z.infer<typeof optionsSchema>;
 
-    const defaultSettings: Settings = {
+    export const defaultOptions: Options = {
         decks: {
             all: true,
             data: {},
@@ -283,53 +338,59 @@ export namespace CardFilter$ {
     };
 
     export interface Props {
-        onSubmit?: Action1<Settings>;
+        onSubmit?: Action1<Options>;
+        onLoad?: Action1<Options>;
     }
 
-    export const View = forwardRef(function ({ onSubmit }: Props, ref: ForwardedRef<Control>) {
+    export const View = forwardRef(function View(
+        { onSubmit, onLoad }: Props,
+        ref: ForwardedRef<Control>,
+    ) {
         const [decks] = useAtom(appState.decks);
-        const [settings, setSettings] = useState<Settings>(defaultSettings);
+        const [options, setOptions] = useState<Options>(defaultOptions);
 
         useImperativeHandle(
             ref,
             () => ({
                 get() {
-                    return settings;
+                    return options;
                 },
             }),
-            [settings],
+            [options],
         );
 
         useEffect(() => {
-            setSettings(loadSettings());
-        }, []);
+            const options = loadOptions();
+            setOptions(options);
+            onLoad?.(options);
+        }, [onLoad]);
 
-        function update(fn: (arg: Settings) => void | unknown) {
-            const newSettings = produce(settings, (draft) => {
+        function update(fn: (arg: Options) => void | unknown) {
+            const newOptions = produce(options, (draft) => {
                 fn(draft);
             });
-            saveSettings(newSettings);
-            setSettings(newSettings);
+            saveOptions(newOptions);
+            setOptions(newOptions);
         }
 
         const indent = Shoe.spacing_medium;
 
         return (
             <Container>
-                <form onSubmit={() => onSubmit?.(settings)}>
+                <form onSubmit={() => onSubmit?.(options)}>
                     <h3>Filter cards</h3>
                     <div>
                         <Checkbox
-                            checked={settings.decks.all}
-                            indeterminate={!settings.decks.all}
+                            checked={options.decks.all}
+                            indeterminate={!options.decks.all}
                             onSlChange={(e) =>
-                                update((settings) => (settings.decks.all = isChecked(e)))
+                                update((opt) => (opt.decks.all = EventUtil.isChecked(e)))
                             }
                         >
-                            Include from {settings.decks.all ? "all" : ""} decks:
+                            Include from {options.decks.all ? "all" : ""} decks:
                         </Checkbox>
 
-                        {!settings.decks.all && (
+                        {!options.decks.all && (
                             <Flex
                                 className="deck-entries"
                                 direction="column"
@@ -345,9 +406,8 @@ export namespace CardFilter$ {
                                         onSlChange={(e) => {
                                             const target = e.target as CheckboxRef;
                                             update(
-                                                (settings) =>
-                                                    (settings.decks.data[target.value] =
-                                                        target.checked),
+                                                (opt) =>
+                                                    (opt.decks.data[target.value] = target.checked),
                                             );
                                         }}
                                     >
@@ -360,9 +420,9 @@ export namespace CardFilter$ {
                     <br />
                     <div>
                         <Checkbox
-                            checked={settings.newCards}
+                            checked={options.newCards}
                             onSlChange={(e) =>
-                                update((settings) => (settings.newCards = isChecked(e)))
+                                update((opt) => (opt.newCards = EventUtil.isChecked(e)))
                             }
                         >
                             Include new cards
@@ -371,32 +431,32 @@ export namespace CardFilter$ {
                     <br />
                     <div>
                         <Checkbox
-                            checked={settings.reviewCards.enabled}
+                            checked={options.reviewCards.enabled}
                             onSlChange={(e) => {
-                                update((settings) => (settings.reviewCards.enabled = isChecked(e)));
+                                update((opt) => (opt.reviewCards.enabled = EventUtil.isChecked(e)));
                             }}
                         >
                             Include reviewing cards
                         </Checkbox>
-                        {settings.reviewCards.enabled && (
+                        {options.reviewCards.enabled && (
                             <Flex
                                 direction="column"
                                 alignItems={"start"}
                                 ml={indent}
                                 mt={Shoe.spacing_small}
-                                cmb={Shoe.spacing_x_small}
+                                cmb={Shoe.spacing_small_x}
                             >
                                 <Checkbox
-                                    checked={settings.reviewCards.all}
-                                    onSlChange={(e) => {
-                                        const newSettings = produce(settings, (s) => {
+                                    checked={options.reviewCards.all}
+                                    onSlChange={() => {
+                                        const newSettings = produce(options, (s) => {
                                             const r = s.reviewCards;
                                             r.all = true;
                                             r.include.enabled = false;
                                             r.exclude.enabled = false;
                                         });
                                         // force redraw
-                                        setSettings({ ...newSettings });
+                                        setOptions({ ...newSettings });
                                     }}
                                 >
                                     all
@@ -404,11 +464,11 @@ export namespace CardFilter$ {
 
                                 <div>
                                     <Checkbox
-                                        checked={settings.reviewCards.include.enabled}
+                                        checked={options.reviewCards.include.enabled}
                                         onSlChange={(e) =>
-                                            update((settings) => {
-                                                const r = settings.reviewCards;
-                                                r.include.enabled = isChecked(e);
+                                            update((opt) => {
+                                                const r = opt.reviewCards;
+                                                r.include.enabled = EventUtil.isChecked(e);
                                                 r.all = !(r.include.enabled || r.exclude.enabled);
                                             })
                                         }
@@ -417,23 +477,20 @@ export namespace CardFilter$ {
                                     </Checkbox>
                                     <Space n={2} />
                                     <TimeSpanInput
-                                        disabled={!settings.reviewCards.include.enabled}
-                                        span={settings.reviewCards.include.value}
+                                        disabled={!options.reviewCards.include.enabled}
+                                        span={options.reviewCards.include.value}
                                         onChange={(value) =>
-                                            update(
-                                                (settings) =>
-                                                    (settings.reviewCards.include.value = value),
-                                            )
+                                            update((opt) => (opt.reviewCards.include.value = value))
                                         }
                                     />
                                 </div>
                                 <div>
                                     <Checkbox
-                                        checked={settings.reviewCards.exclude.enabled}
+                                        checked={options.reviewCards.exclude.enabled}
                                         onSlChange={(e) =>
-                                            update((settings) => {
-                                                const r = settings.reviewCards;
-                                                r.exclude.enabled = isChecked(e);
+                                            update((opt) => {
+                                                const r = opt.reviewCards;
+                                                r.exclude.enabled = EventUtil.isChecked(e);
                                                 r.all = !(r.include.enabled || r.exclude.enabled);
                                             })
                                         }
@@ -442,13 +499,10 @@ export namespace CardFilter$ {
                                     </Checkbox>
                                     <Space n={2} />
                                     <TimeSpanInput
-                                        disabled={!settings.reviewCards.exclude.enabled}
-                                        span={settings.reviewCards.exclude.value}
+                                        disabled={!options.reviewCards.exclude.enabled}
+                                        span={options.reviewCards.exclude.value}
                                         onChange={(value) =>
-                                            update(
-                                                (settings) =>
-                                                    (settings.reviewCards.exclude.value = value),
-                                            )
+                                            update((opt) => (opt.reviewCards.exclude.value = value))
                                         }
                                     />
                                 </div>
@@ -458,20 +512,20 @@ export namespace CardFilter$ {
                     <br />
                     <div>
                         <Checkbox
-                            checked={settings.customCards.enabled}
+                            checked={options.customCards.enabled}
                             onSlChange={(e) =>
-                                update((settings) => (settings.customCards.enabled = isChecked(e)))
+                                update((opt) => (opt.customCards.enabled = EventUtil.isChecked(e)))
                             }
                         >
                             Include custom cards
                         </Checkbox>
-                        {settings.customCards.enabled && (
+                        {options.customCards.enabled && (
                             <>
                                 <Block mt={Shoe.spacing_small} />
                                 <CardListEditor
-                                    items={settings.customCards.data}
+                                    items={options.customCards.data}
                                     onChange={(lines) =>
-                                        update((settings) => (settings.customCards.data = lines))
+                                        update((opt) => (opt.customCards.data = lines))
                                     }
                                 />
                             </>
@@ -489,19 +543,19 @@ export namespace CardFilter$ {
         );
     });
 
-    const lsKey = "card-filter-settings";
+    const lsKey = "card-filter-options";
 
-    function loadSettings() {
-        const res = Settings.safeParse(tryJSONParse(localStorage.getItem(lsKey) ?? ""));
+    function loadOptions() {
+        const res = optionsSchema.safeParse(tryJSONParse(localStorage.getItem(lsKey) ?? ""));
         if (!res.success) {
-            console.log("failed to load settings", res.error);
-            return { ...defaultSettings };
+            console.log("failed to load options", res.error);
+            return { ...defaultOptions };
         }
-        const settings = res.data;
-        return settings;
+        const options = res.data;
+        return options;
     }
-    function saveSettings(settings: Settings) {
-        localStorage.setItem(lsKey, JSON.stringify(settings));
+    function saveOptions(options: Options) {
+        localStorage.setItem(lsKey, JSON.stringify(options));
     }
 
     const Container = styled.div`
@@ -512,20 +566,19 @@ export namespace CardFilter$ {
         }
     `;
 
-    function isChecked(e: Event): boolean {
-        return !!((e.target as any).checked ?? false);
-    }
-
-    export function filterCards(cards: main.CardData[], settings: Settings): main.CardData[] {
-        const customCardSet = new Set(settings.customCards.data);
+    export function filterCards(cards: main.CardData[], options: Options): main.CardData[] {
+        const customCardSet = new Set(options.customCards.data);
         const result: main.CardData[] = [];
 
-        const { reviewCards } = settings;
+        const { reviewCards } = options;
 
-        // TODO:
+        if (!options.decks.all) {
+            cards = cards.filter((c) => options.decks.data[c.deckName]);
+        }
+
         for (const card of cards) {
-            const isCustom = !settings.customCards.enabled || customCardSet.has(card.path);
-            const isNew = settings.newCards && Card.isNew(card);
+            const isCustom = options.customCards.enabled && customCardSet.has(card.path);
+            const isNew = options.newCards && Card.isNew(card);
             const isReview = reviewCards.enabled && reviewCards.all && Card.isReviewing(card);
 
             let includeCard = false;
@@ -580,7 +633,7 @@ export namespace TimeSpanInput$ {
                         valueAsNumber={Math.max(span.value, 1)}
                         onSlChange={(e) =>
                             onInputChange(
-                                (e.target as any).valueAsNumber,
+                                EventUtil.valueAsNumber(e),
                                 select.current?.getValueAsArray()?.[0] as TimeSpan.Unit,
                             )
                         }
@@ -590,7 +643,7 @@ export namespace TimeSpanInput$ {
                         disabled={disabled}
                         value={span.unit}
                         onSlChange={(e) =>
-                            onInputChange(input.current?.valueAsNumber, (e.target as any).value)
+                            onInputChange(input.current?.valueAsNumber, EventUtil.value(e))
                         }
                     >
                         {TimeSpan.units.map((val) => (
@@ -617,42 +670,49 @@ export namespace CardListEditor$ {
     export interface Props {
         listClassName?: string;
         items: string[];
-        onChange?: Action1<string[]>;
+        onChange?: Action2<string[], boolean>;
     }
 
     export interface Controls {
         validate: () => Promise<boolean>;
         getText: () => string;
+        clearErrors: () => void;
     }
 
-    export const View = forwardRef(function (
+    export const View = forwardRef(function View(
         { onChange, items }: Props,
         ref: ForwardedRef<Controls>,
     ) {
         const [invalidFilenames, setInvalidFilenames] = useState<string[] | null>(null);
         const textareaRef = useRef<TextareaRef>();
 
+        const onCheck = useCallback(
+            async function () {
+                if (!textareaRef.current) {
+                    return false;
+                }
+
+                const [text, invalidPaths] = await validateAndFormat(textareaRef.current.value);
+                setInvalidFilenames(invalidPaths.slice(0, 10));
+                textareaRef.current.value = text;
+                onChange?.(text.split("\n"), invalidPaths.length > 0);
+
+                return invalidPaths.length > 0;
+            },
+            [onChange],
+        );
+
         useImperativeHandle(
             ref,
             () => ({
                 validate: onCheck,
                 getText: () => textareaRef.current?.textContent ?? "",
+                clearErrors: () => {
+                    setInvalidFilenames(null);
+                },
             }),
-            [],
+            [onCheck, setInvalidFilenames],
         );
-
-        async function onCheck() {
-            if (!textareaRef.current) {
-                return false;
-            }
-
-            const [text, invalidPaths] = await validateAndFormat(textareaRef.current.value);
-            setInvalidFilenames(invalidPaths.slice(0, 10));
-            textareaRef.current.value = text;
-            onChange?.(text.split("\n"));
-
-            return invalidPaths.length > 0;
-        }
 
         function onInput() {
             setInvalidFilenames(null);
@@ -668,13 +728,14 @@ export namespace CardListEditor$ {
             >
                 <div>
                     <div>
-                        <Flex justifyContent="end">
+                        {/*<textarea defaultValue={items.join("\n")} ref={onMountTextarea} />*/}
+                        <Flex justifyContent="end" className="check-button">
                             <Button size="small" onClick={() => onCheck()}>
                                 check
                             </Button>
                         </Flex>
-                        {/*<textarea defaultValue={items.join("\n")} ref={onMountTextarea} />*/}
                         <Textarea
+                            resize="auto"
                             className="card-text-input"
                             value={items.join("\n")}
                             ref={textareaRef}
@@ -689,7 +750,7 @@ export namespace CardListEditor$ {
                                     These cards do not exist:
                                     <ul>
                                         {invalidFilenames.map((f) => (
-                                            <li key={f}>{f}</li>
+                                            <li key={f}>{f.slice(0, 50)}</li>
                                         ))}
                                     </ul>
                                 </div>
@@ -721,18 +782,23 @@ export namespace CardListEditor$ {
     }
 
     export const Container = styled.div<{ valid?: boolean | null; dragging?: boolean }>`
+        .check-button {
+            z-index: ${Shoe.z_index_dropdown};
+            position: relative;
+            height: 0;
+            > sl-button {
+                position: absolute;
+                top: 1px;
+            }
+        }
+
         ._controls {
             font-size: 12px;
         }
         ul {
-            margin: 0;
+            width: 500px;
         }
 
-        textarea {
-            height: 200px;
-            background: white;
-            color: black;
-        }
         ._error-message {
             white-space: pre;
             font-size: 18px;
@@ -777,3 +843,98 @@ export namespace CardListEditor$ {
 }
 
 export const CardListEditor = CardListEditor$.View;
+
+export namespace SelectedCards$ {
+    export interface Props {
+        onSubmit: Action;
+    }
+    export function View({ onSubmit }: Props) {
+        const [allUserCards] = useAtom(appState.allUserCards);
+        const [cards, setCards] = useAtom(appState.drillCards);
+        const [editing, setEdit] = useState(false);
+        const [lines, setLines] = useState<string[]>([]);
+        const [hasError, setHasError] = useState(false);
+        const listEditor = useRef<CardListEditor$.Controls | null>(null);
+
+        useEffect(() => {
+            setLines(cards.map((c) => c.path));
+        }, [cards]);
+
+        async function onAction() {
+            const edit = !editing;
+            if (!edit) {
+                const hasErrors = await listEditor?.current?.validate();
+                if (hasErrors) return;
+
+                const set = new Set(lines);
+                const cards = allUserCards.filter((c) => set.has(c.path)).map((c) => Card.parse(c));
+                setCards(cards);
+                setLines(lines);
+
+                await app.CreateStudySession(
+                    config.defaultStudyName,
+                    config.studySessionTypes.normal,
+                    cards.map((c) => c.path),
+                );
+            }
+
+            setEdit(edit);
+            setHasError(false);
+        }
+        async function onCancel() {
+            setEdit(false);
+            setHasError(false);
+            setLines(cards.map((c) => c.path));
+            listEditor.current?.clearErrors();
+        }
+        function onChange(lines: string[], hasError: boolean) {
+            setLines(lines);
+            setHasError(hasError);
+        }
+
+        return (
+            <Container>
+                <Block hide={!editing} className="entries">
+                    <CardListEditor items={lines} ref={listEditor} onChange={onChange} />
+                </Block>
+                <Flex hide={editing} className="entries">
+                    <ol>
+                        {cards.map((c) => (
+                            <li key={c.id}>{c.path}</li>
+                        ))}
+                    </ol>
+                </Flex>
+                <Flex justifyContent={"start"} cmr="5px">
+                    {editing && (
+                        <Button variant="default" onClick={onCancel}>
+                            cancel
+                        </Button>
+                    )}
+                    <Button variant="default" disabled={hasError} onClick={onAction}>
+                        {editing ? "save" : "edit cards"}
+                    </Button>
+                    {!editing && (
+                        <Button variant="primary" onClick={onSubmit}>
+                            start
+                        </Button>
+                    )}
+                </Flex>
+            </Container>
+        );
+    }
+    const Container = styled.div`
+        ul,
+        ol {
+            width: 100%;
+            max-height: 50vh;
+            overflow-y: auto;
+        }
+        sl-textarea {
+            ::part(textarea) {
+                max-height: 50vh;
+                overflow-y: auto;
+            }
+        }
+    `;
+}
+export const SelectedCards = SelectedCards$.View;

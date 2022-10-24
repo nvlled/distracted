@@ -51,7 +51,7 @@ describe("ShortAlternating", () => {
         const lines: string[] = [];
         for (let batch = 0; batch < 50; batch++) {
             const line = [`b=${batch}, c=${counter}`.padEnd(20)];
-            const s = new Set<number>();
+            //const s = new Set<number>();
             for (let i = 0; i < batchSize; i++) {
                 const { item, nextCounter } = ShortAlternating.nextDue(counter, batchSize, cards);
                 if (!item) {

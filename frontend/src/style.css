@@ -12,6 +12,10 @@ h1, h2, h3, h4, h5, h6, b, strong, th {
     color: #9ff;
 }
 */
+h1, h2, h3, h4, h5, h6, b, strong, th {
+    margin: 0;
+    font-weight: 500;
+}
 
 body {
     /*font-size: 250%;*/

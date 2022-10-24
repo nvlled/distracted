@@ -1,16 +1,5 @@
-import React, {
-    ChangeEvent,
-    Component,
-    ForwardedRef,
-    forwardRef,
-    memo,
-    useDebugValue,
-    useImperativeHandle,
-    useLayoutEffect,
-    useMemo,
-} from "react";
+import { ChangeEvent, forwardRef, memo, useCallback } from "react";
 import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
 import styled from "styled-components";
 import { Card } from "./card";
 import { FactorData, FactorID, Factors, FactorTrial } from "./factors";
@@ -20,25 +9,19 @@ import {
     Action,
     Action1,
     Action2,
-    Action3,
     findAllIndices,
     getRelatedCharacters,
     hasProp,
     isSymbol as isPunctuation,
     isSymbol,
-    lastElem,
     LocalStorageSerializer,
     randomColor,
     randomElem,
     range,
     shuffle,
-    sleep,
-    tryJSONParse,
-    useAsyncEffect,
-    useOnce as invokeOnce,
 } from "./lib";
-import { AudioPlayer, AudioPlayer$ } from "./AudioPlayer";
-import { CardView } from "./SessionDrill";
+import { AudioPlayer } from "./AudioPlayer";
+import { CardView } from "./CardView";
 
 /*
 
@@ -253,31 +236,35 @@ export namespace _ProficiencyTrial {
             setRecalled(recalled);
         }
 
-        function init(card: Card) {
-            const trial = Card.getTrial(card);
-            setState(initialState);
+        const init = useCallback(
+            function init(card: Card) {
+                const trial = Card.getTrial(card);
+                setState(initialState);
 
-            //trial.observation = true; // !!!
-            //trial.presented = "sound";
-            //trial.tested = "text";
+                //trial.observation = true; // !!!
+                //trial.presented = "sound";
+                //trial.tested = "text";
 
-            const noise = otherCards
-                .map((c) => c.factorData[trial.tested] ?? "")
-                .filter((s) => !isPunctuation(s))
-                .join("");
+                const noise = otherCards
+                    .map((c) => c.factorData[trial.tested] ?? "")
+                    .filter((s) => !isPunctuation(s))
+                    .join("");
 
-            setAudioPlaying(false);
-            setRecalled(false);
-            setTestNoise(noise);
-            setTrial(trial);
+                setAudioPlaying(false);
+                setRecalled(false);
+                setTestNoise(noise);
+                setTrial(trial);
 
-            if (trial.presented === "sound") {
-                DeckAudio.play(card.factorData.sound ?? "");
-            }
-        }
+                if (trial.presented === "sound") {
+                    DeckAudio.play(card.factorData.sound ?? "");
+                }
+            },
+            [otherCards],
+        );
+
         useEffect(() => {
             init(card);
-        }, [card]);
+        }, [card, init]);
 
         if (trial.observation) {
             return (
@@ -479,7 +466,7 @@ export namespace ColorizeChar$ {
             useEffect(() => {
                 initCanvas(text, refs, settings);
                 onUpdate(refs.colorCount, refs.initColorCount);
-            }, [text, fontSize, settings]);
+            }, [text, fontSize, settings, onUpdate, refs]);
 
             return (
                 <CanvasContainer fontSize={fontSize}>
@@ -549,7 +536,8 @@ export namespace ColorizeChar$ {
 
     function createBuffer(canvas: HTMLCanvasElement) {
         const newCanvas = canvas.cloneNode(true) as HTMLCanvasElement;
-        const ctx = newCanvas.getContext("2d")!;
+        const ctx = newCanvas.getContext("2d");
+        if (!ctx) return;
         newCanvas.width = canvas.width;
         newCanvas.height = canvas.height;
         ctx.font = canvas.getContext("2d")?.font ?? "";
@@ -582,6 +570,7 @@ export namespace ColorizeChar$ {
 
         const back = createBuffer(canvas);
         const front = createBuffer(canvas);
+        if (!back || !front) return;
 
         drawTextShape(text, back.canvas, back.ctx);
         drawTextOutline(text, back.canvas, back.ctx);
@@ -810,7 +799,7 @@ export namespace ColorizeText$ {
         const [chars, setChars] = useState<string[]>([]);
         const [fontSize, setFontSize] = useState(400);
         const [expand, setExpand] = useState(false);
-        const [lastUpdate, setLastUpdate] = useState(Date.now());
+        const [, setLastUpdate] = useState(Date.now());
 
         //const [settings, setSettings] = useState<ColorizeChar$.Settings>({
         //    opacity: 1,
@@ -894,7 +883,8 @@ export namespace ColorizeText$ {
             settings.opacity = state.opacity;
             settings.penScale = state.penScale;
             settings.autoHide = state.autoHide;
-        }, []);
+            // FIX?: refs dep
+        }, [settings]);
 
         return (
             <st.Container expand={expand}>
@@ -1043,44 +1033,6 @@ export namespace ColorizeText$ {
 }
 export const ColorizeText = ColorizeText$.View;
 
-const A = () => {
-    const bRef = useRef<BControl | null>(null);
-    const { current: aState } = useRef({
-        a: 9,
-    });
-    return (
-        <div>
-            <button
-                onClick={() => {
-                    bRef.current?.increment();
-                    aState.a++;
-                }}
-            >
-                +
-            </button>
-            <B ref={bRef} options={aState} />
-        </div>
-    );
-};
-interface BControl {
-    increment: Action;
-}
-const B = forwardRef(({ options }: { options: { a: number } }, ref: ForwardedRef<BControl>) => {
-    const [x, setX] = useState(0);
-    useImperativeHandle(
-        ref,
-        () => {
-            return {
-                increment() {
-                    setX((x) => x + 1 * options.a);
-                },
-            };
-        },
-        [],
-    );
-    return <div>B component {x}</div>;
-});
-
 namespace SoundSearch$ {
     export interface Props {
         sound: string;
@@ -1090,7 +1042,6 @@ namespace SoundSearch$ {
     export function View({ sound, noise, onComplete }: Props) {
         const numSound = 5;
         const [otherSounds, setOtherSounds] = useState(noise);
-        const [playing, setPlaying] = useState<Record<string, AudioPlayer$.PlayerState>>({});
         const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
 
         const { current: refs } = useRef({
@@ -1103,10 +1054,10 @@ namespace SoundSearch$ {
             const otherSounds = shuffle(noise.concat(...sounds));
             setOtherSounds(otherSounds);
             setSelectedIndices(new Set());
-            setPlaying({});
             refs.correctIndices = new Set(findAllIndices(otherSounds, sound));
             DeckAudio.play(sound);
-        }, [sound, noise]);
+            // FIX?: refs dep
+        }, [sound, noise, refs]);
 
         function toggleEntry(i: number) {
             const indices = new Set(selectedIndices);
@@ -1208,35 +1159,40 @@ namespace WordSearch$ {
     }
     export function View({ text: textProp, reveal: revealProp }: Props) {
         const [reveal, setReveal] = useState(revealProp);
-        const [time, setTime] = useState(Date.now());
+        const [, setTime] = useState(Date.now());
 
         const { current: refs } = useRef({
             text: "",
             items: [] as TextBlockItem[],
         });
 
-        function init(text: string, noise: string | undefined = undefined) {
-            if (!noise) {
-                noise = getRelatedCharacters(textProp, 20).join("");
-            }
-            text = text
-                .split("")
-                .filter((c) => !isSymbol(c))
-                .join("");
+        const init = useCallback(
+            function init(text: string, noise: string | undefined = undefined) {
+                if (!noise) {
+                    noise = getRelatedCharacters(textProp, 20).join("");
+                }
+                text = text
+                    .split("")
+                    .filter((c) => !isSymbol(c))
+                    .join("");
 
-            const width = Math.floor(text.length * 2.0);
-            const items = createTextBlock(width, height, text, noise);
-            refs.items = items;
-            refs.text = text;
+                const width = Math.floor(text.length * 2.0);
+                const items = createTextBlock(width, height, text, noise);
+                refs.items = items;
+                refs.text = text;
 
-            setReveal(false);
-            setTime(Date.now());
-        }
+                setReveal(false);
+                setTime(Date.now());
+            },
+            // TODO: if this broke, probably because of refs dep
+            [refs, textProp],
+        );
+
         useEffect(() => setReveal(revealProp), [revealProp]);
 
         useEffect(() => {
             init(textProp);
-        }, [textProp]);
+        }, [textProp, init]);
 
         return (
             <Container reveal={reveal}>
@@ -1298,11 +1254,6 @@ namespace WordSearch$ {
     const minWidth = 15;
     const height = 4;
 
-    function replaceCharAt(text: string, i: number, ch: string) {
-        if (i < 0 || i >= text.length) return text;
-        return (text.slice(0, i) + ch + text.slice(i + ch.length)).slice(0, text.length);
-    }
-
     type TextBlockItem = { text: string; answer: boolean };
     function blockItem(text: string, answer = false) {
         return { text, answer };
@@ -1337,7 +1288,7 @@ namespace WordSearch$ {
             if (!isPunctuation(c)) chars.push(c);
         }
 
-        let lines: TextBlockItem[] = [];
+        const lines: TextBlockItem[] = [];
         const lineNum = Math.floor(midWeightedRandom() * height);
         for (let n = 0; n < height; n++) {
             const colNum = Math.floor(Math.random() * (width - text.length + 1));

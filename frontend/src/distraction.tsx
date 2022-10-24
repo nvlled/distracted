@@ -1,16 +1,10 @@
 export {};
 
-import { useAtom } from "jotai";
-import React, { FormEvent, FormEventHandler, memo, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useRef, useState } from "react";
 import styled from "styled-components";
-import YouTubePlayer from "youtube-player";
-import * as yt from "youtube-player/dist/types";
-import { main } from "../wailsjs/go/models";
-import { app, api, runtime, wailsExt } from "./api";
+import { app } from "./api";
 import { Card } from "./card";
-import { Action, formatDuration, useAsyncEffect, useAsyncEffectUnmount } from "./lib";
-import { appState } from "./state";
-import { lt } from "./layout";
+import { Action, formatDuration, useAsyncEffectUnmount } from "./lib";
 
 export namespace _TabOutDistraction {
     export const Container = styled.div``;
@@ -25,7 +19,7 @@ export namespace _TabOutDistraction {
         seconds: number;
     }) {
         const [countdown, setCountdown] = useState(seconds);
-        const [distractionMode, setDistractionMode] = useAtom(appState.distractionMode);
+        //const [distractionMode, setDistractionMode] = useAtom(appState.distractionMode);
         const timerRef = useRef<number | undefined>();
         const notifierID = useRef<number | undefined>();
         const mounted = useRef(false);
@@ -41,7 +35,7 @@ export namespace _TabOutDistraction {
             onReturn();
         }
 
-        useAsyncEffectUnmount(async () => {
+        const init = useCallback(async () => {
             const unmount = () => {
                 console.log("a");
                 stopNotifier();
@@ -68,13 +62,15 @@ export namespace _TabOutDistraction {
             }, 1000);
 
             return unmount;
-        }, []);
+        }, [seconds]);
+
+        useAsyncEffectUnmount(init);
 
         return (
             <Container>
                 {countdown <= 0 ? (
                     <div>
-                        Break time's over.
+                        Break time&apos;s over.
                         <button onClick={onTryReturn}>noooooo11!!!12</button>
                     </div>
                 ) : (

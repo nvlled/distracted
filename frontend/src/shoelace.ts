@@ -261,16 +261,16 @@ export namespace Shoe {
     /*
      * Spacings
      */
-    export const spacing_3x_small = "var(--sl-spacing-3x-small)";
-    export const spacing_2x_small = "var(--sl-spacing-2x-small)";
-    export const spacing_x_small = "var(--sl-spacing-x-small)";
+    export const spacing_small_3x = "var(--sl-spacing-3x-small)";
+    export const spacing_small_2x = "var(--sl-spacing-2x-small)";
+    export const spacing_small_x = "var(--sl-spacing-x-small)";
     export const spacing_small = "var(--sl-spacing-small)";
     export const spacing_medium = "var(--sl-spacing-medium)";
     export const spacing_large = "var(--sl-spacing-large)";
-    export const spacing_x_large = "var(--sl-spacing-x-large)";
-    export const spacing_2x_large = "var(--sl-spacing-2x-large)";
-    export const spacing_3x_large = "var(--sl-spacing-3x-large)";
-    export const spacing_4x_large = "var(--sl-spacing-4x-large)";
+    export const spacing_large_x = "var(--sl-spacing-x-large)";
+    export const spacing_large_2x = "var(--sl-spacing-2x-large)";
+    export const spacing_large_3x = "var(--sl-spacing-3x-large)";
+    export const spacing_large_4x = "var(--sl-spacing-4x-large)";
 
     /*
      * Transitions
@@ -447,4 +447,21 @@ export namespace Shoe {
     export const z_index_dropdown = "var(--sl-z-index-dropdown)";
     export const z_index_toast = "var(--sl-z-index-toast)";
     export const z_index_tooltip = "var(--sl-z-index-tooltip)";
+}
+
+export namespace EventUtil {
+    export function isChecked(e: Event): boolean {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return !!((e.target as any)?.checked ?? false);
+    }
+    export function value<T>(e: Event): T | undefined {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (e.target as any)?.value as T;
+    }
+    export function valueAsNumber(e: Event): number | undefined {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const n = (e.target as any)?.valueAsNumber;
+        if (isNaN(n)) return undefined;
+        return n;
+    }
 }

@@ -1,12 +1,6 @@
 import styled from "styled-components";
 import { Property } from "csstype";
 
-function entry<T>(keyName: string, value: T | undefined, defaultValue?: T | undefined) {
-    if (value == undefined && defaultValue == undefined) {
-        return "";
-    }
-    return `{${keyName}: ${value ?? defaultValue};}`;
-}
 function entryPx(
     keyName: string,
     value: string | number | undefined,
@@ -26,6 +20,10 @@ export namespace lt {
         direction?: Property.FlexDirection | undefined;
     }
     export interface BlockProps {
+        inline?: boolean | undefined;
+        hide?: boolean | undefined;
+        fw?: boolean | undefined;
+
         m?: string | number | undefined;
         mx?: string | number | undefined;
         my?: string | number | undefined;
@@ -97,10 +95,11 @@ export const lt = {
 };
 
 export const Flex = styled.div<lt.RowProps & lt.BlockProps>`
-    display: flex;
+    display: ${(props) => (props.hide ? "none" : "flex")};
     justify-content: ${(props) => props.justifyContent ?? "left"};
     align-items: ${(props) => props.alignItems ?? "center"};
     flex-direction: ${(props) => props.direction ?? "row"};
+    ${(props) => (props.fw ? "width: 100%;" : "")}
 
     > * {
         ${(props) => entryPx("margin", props.cm)};
@@ -124,7 +123,9 @@ export const Flex = styled.div<lt.RowProps & lt.BlockProps>`
 `;
 
 export const Block = styled.div<lt.BlockProps>`
-    display: block;
+    display: ${(props) => (props.hide ? "none" : props.inline ? "inline-block" : "block")};
+    ${(props) => (props.fw ? "width: 100%;" : "")}
+
     > * {
         ${(props) => entryPx("margin", props.cm)};
         ${(props) => entryPx("margin-left", props.cml ?? props.cmx)};

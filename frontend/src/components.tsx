@@ -1,7 +1,5 @@
-import React, { createContext, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
-import { LogTrace } from "../wailsjs/runtime/runtime";
-import { Card } from "./card";
 import { lt } from "./layout";
 import { Action, clamp, isSymbol, range, shuffle } from "./lib";
 
@@ -14,8 +12,7 @@ export function PhraseInput({
     correctPhrase: correctPhraseProp,
     otherChoices: otherChoicesProp,
 }: PhraseInput.Props) {
-    type State = "" | "✗" | "✓";
-    const { Container, InputAnswer, CorrectAnswer, PhraseList, PhraseChoice } = PhraseInput;
+    const { Container, InputAnswer, PhraseList, PhraseChoice } = PhraseInput;
 
     const [correctPhrase] = useState(
         correctPhraseProp
@@ -50,8 +47,9 @@ export function PhraseInput({
                 </InputAnswer>
             </lt.Row>
             <PhraseList>
-                {otherChoices.map((c) => (
+                {otherChoices.map((c, i) => (
                     <PhraseChoice
+                        key={c + i}
                         onClick={() => onSelectItem(c)}
                         onMouseDown={(e) => {
                             if (e.detail > 1) {
@@ -76,7 +74,7 @@ export function PhraseInput({
             </lt.Row>
             <div className="_info">
                 Input the correct keyword by clicking on the letters. <br />
-                It's okay to peek at the answer, but if you do, consider it forgotten.
+                It&apos;s okay to peek at the answer, but if you do, consider it forgotten.
             </div>
         </Container>
     );
@@ -178,8 +176,9 @@ export function PhraseSearch({
                 {answer}
             </CorrectAnswer>
             <PhraseList>
-                {otherChoices.map((text) => (
+                {otherChoices.map((text, i) => (
                     <PhraseChoice
+                        key={text + i}
                         onClick={() => setAnswer(text)}
                         selected={answer === text}
                         correct={text === correctPhrase}
@@ -193,7 +192,7 @@ export function PhraseSearch({
             </div>
             <div className="_info">
                 Search for the correct keyword by clicking it. <br />
-                It's okay to peek at the answer, but if you do, consider it forgotten.
+                It&apos;s okay to peek at the answer, but if you do, consider it forgotten.
             </div>
         </Container>
     );
@@ -297,7 +296,7 @@ namespace _PhraseSelect {
             setOtherChoices(otherChoices);
             setCorrectPhrase(correctPhrase);
             setAnswer("");
-        }, [correctPhraseProp]);
+        }, [correctPhraseProp, otherChoicesProp]);
 
         function shiftRight() {
             setOtherChoices((otherChoices) =>
@@ -377,8 +376,8 @@ namespace _PhraseSelect {
                             ) + "px"
                         }
                     >
-                        {otherChoices.map((text) => (
-                            <PhraseChoice>{text}</PhraseChoice>
+                        {otherChoices.map((text, i) => (
+                            <PhraseChoice key={text + i}>{text}</PhraseChoice>
                         ))}
                     </PhraseList>
                     <div>
@@ -392,7 +391,7 @@ namespace _PhraseSelect {
                 </div>
                 <div className="_info">
                     Search for the correct keyword by selecting it. <br />
-                    It's okay to peek at the answer, but if you do, consider it forgotten.
+                    It&apos;s okay to peek at the answer, but if you do, consider it forgotten.
                 </div>
             </Container>
         );
@@ -441,12 +440,6 @@ namespace _PhraseSelect {
             return "border-color: #f00";
         }};
     `;
-    const Status = styled.div<{ correct: string }>`
-        color: ${(props) => (props.correct ? "#0f0" : "#f00")};
-        font-size: 30px;
-        display: inline-block;
-    `;
-
     function getChoices(correct: string, items: string[]) {
         const correctLetters = correct.split("").filter((c) => !isSymbol(c));
         items.unshift(correct);
@@ -490,4 +483,24 @@ export function Space({ n = 1 }: { n?: number }) {
             ))}
         </>
     );
+}
+
+export function Tick({ intervalMs = 1000, onTick }: { intervalMs?: number; onTick: Action }) {
+    const timerID = useRef(0);
+    const lastUpdate = useRef(0);
+
+    useEffect(() => {
+        const fn = () => {
+            const now = Date.now() - lastUpdate.current;
+            if (now >= intervalMs) {
+                onTick();
+                lastUpdate.current = now;
+            }
+        };
+
+        timerID.current = window.setInterval(fn, intervalMs);
+        return () => window.clearInterval(timerID.current);
+    }, [intervalMs, onTick]);
+
+    return <div />;
 }

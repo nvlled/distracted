@@ -1,44 +1,63 @@
 import { marked } from "marked";
 import { useAtom } from "jotai";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
-import { app } from "./api";
+import { app, main } from "./api";
 import { Card } from "./card";
-import { Factor, FactorID, FactorTrial } from "./factors";
+import { Factor, FactorID } from "./factors";
 import { Block, Flex, lt } from "./layout";
 import {
     createPair,
     currentDate,
-    OrderedSet,
     partition,
     randomElem,
     shuffle,
+    sleep,
+    tryJSONParse,
     useAsyncEffect,
     useInterval,
     yesterDate,
 } from "./lib";
 import { appState } from "./state";
 import { AudioPlayer, AudioPlayer$ } from "./AudioPlayer";
-import { DeckAudio } from "./DeckAudio";
-import { SelectedCards } from "./SessionPrepare";
-import { Button, CardBox, Checkbox, Dialog, Icon, Input, Range, RangeRef, Shoe } from "./shoelace";
-import { Space } from "./components";
+import {
+    Badge,
+    Button,
+    CardBox,
+    Checkbox,
+    Details,
+    EventUtil,
+    Icon,
+    RadioButton,
+    RadioGroup,
+    Range,
+    Shoe,
+    Tag,
+    Tooltip,
+} from "./shoelace";
+import { boolean, z } from "zod";
+import { produce, enableMapSet } from "immer";
+import { canPlayAudio } from "./DeckAudio";
+import { Tick } from "./components";
+
+enableMapSet();
 
 function useReviewingCards(deckName?: string) {
     const [allCards, setAllCards] = useState<Card[]>([]);
     const [cards, setCards] = useState<Card[]>([]);
     const [drillCards] = useAtom(appState.drillCards);
 
-    useAsyncEffect(async () => {
+    const fn = useCallback(async () => {
         const cardData = await app.GetReviewingCards(deckName ?? "", -1);
         setAllCards(cardData.map((c) => Card.parse(c)));
     }, [deckName]);
+    useAsyncEffect(fn);
 
     useEffect(() => {
         const yester = yesterDate();
         const today = currentDate();
         const idSet = new Set(drillCards.map((c) => c.id));
-        let cards = allCards.filter((c) => {
+        const cards = allCards.filter((c) => {
             if (c.lastRecallDate === today) return false;
             if (idSet.has(c.id)) return false;
             return true;
@@ -53,181 +72,371 @@ function useReviewingCards(deckName?: string) {
     return createPair(cards, setCards);
 }
 
-// TODO: use filtered allUserCards
+function CardInfo({ card }: { card: Card }) {
+    return (
+        <Block inline>
+            <Flex mx={Shoe.spacing_small_2x} cml={Shoe.spacing_small_2x}>
+                {card.id}
+                {Card.isNew(card) && (
+                    <div>
+                        <Tooltip content="new card">
+                            <Tag variant="success" pill size="small">
+                                new
+                            </Tag>
+                        </Tooltip>
+                    </div>
+                )}
+                {Card.isReviewing(card) && (
+                    <div>
+                        <Tooltip content="reviewing card">
+                            <Tag variant="primary" pill size="small">
+                                review
+                            </Tag>
+                        </Tooltip>
+                    </div>
+                )}
+                <div>
+                    <Tooltip content="recalls">
+                        <Badge variant="success" pill>
+                            {card.numRecall}
+                        </Badge>
+                    </Tooltip>
+                </div>
+                <div>
+                    <Tooltip content="forgets">
+                        <Badge variant="danger" pill>
+                            {card.numForget}
+                        </Badge>
+                    </Tooltip>
+                </div>
+            </Flex>
+        </Block>
+    );
+}
+
+function TestInterval() {
+    const [index, setIndex] = useState(0);
+    const [count, setCount] = useState(0);
+
+    useInterval(
+        1000,
+        () => {
+            setCount((count) => count + 1);
+        },
+        [setCount],
+    );
+
+    return (
+        <div>
+            count={count}
+            <br />
+            index={index}
+        </div>
+    );
+}
+
 export namespace SequentRecap$ {
-    export interface Props {}
-    export function View({}: Props) {
-        type FactorFilter = FactorID | "auto";
-        const [index, setIndex] = useState(-1);
-        const [reviewingCards, setReviewingCards] = useReviewingCards();
-        const [selectedCards, setSelectedCards] = useAtom(appState.drillCards);
-        const [showSettings, setShowSettings] = useState(false);
-        const [factorFilter, setFactorFilter] = useState<FactorFilter>("auto");
-        const [factor, setFactor] = useState<FactorID | null>(null);
-        const [startCountdown, setStartCountdown] = useState(defaultStartCountdown);
-        const [countdown, setCountdown] = useState(startCountdown);
-        const audioPlayer = useRef<AudioPlayer$.Control | null>(null);
+    namespace Options {
+        const lsKey = "sequent-recap";
 
-        useEffect(() => {
-            if (countdown > 0 && index >= 0) return;
-
-            let cards = reviewingCards;
-            if (index + 1 >= cards.length) cards = shuffle(cards);
-            audioPlayer.current = null;
-
-            for (let retry = 0; retry < cards.length; retry++) {
-                const i = (index + 1) % cards.length;
-                const card = cards[i];
-                if (!card) continue;
-
-                let factor: FactorID = "meaning";
-                if (factorFilter === "auto") {
-                    factor = Card.getRandomFactor(card);
-                } else if (card.availableFactors.has(factorFilter)) {
-                    factor = factorFilter;
-                } else {
-                    continue;
-                }
-
-                setIndex(i);
-                setFactor(factor);
-                setCountdown(startCountdown);
-                setReviewingCards(cards);
-                return;
-            }
-
-            setIndex(-1);
-        }, [index, countdown, reviewingCards, factor]);
-
-        useInterval(countdown > 0, 1000, () => {
-            setCountdown((n) => n - 1);
-            const p = audioPlayer.current;
-            if (p && !p.isPlaying() && p.stopDuration() >= 2500) {
-                p.play();
-            }
+        export const schema = z.object({
+            factor: z.enum(["meaning", "sound", "text", "auto"]),
+            notify: z.boolean(),
+            secondsPerCard: z.number().min(5),
+            soundDelay: z.number().min(3),
+            notifyDelay: z.number().min(10),
         });
 
-        function onChangeFilter(factor: FactorFilter) {
-            setCountdown(0);
-            setFactorFilter(factor);
+        export type T = z.infer<typeof schema>;
+
+        export const defaultOptions: T = Object.freeze({
+            factor: "auto",
+            notify: false,
+            secondsPerCard: 5,
+            soundDelay: 5,
+            notifyDelay: 10,
+        });
+
+        export function load() {
+            const res = schema.safeParse(tryJSONParse(localStorage.getItem(lsKey) ?? ""));
+            if (!res.success) {
+                console.log("failed to load options", res.error);
+                return { ...defaultOptions };
+            }
+            return res.data;
+        }
+        export function save(options: T) {
+            localStorage.setItem(lsKey, JSON.stringify(options));
+        }
+    }
+
+    export interface Props {
+        cardData: main.CardData[];
+    }
+
+    const defaultRenderState = {
+        index: -1,
+        //currentCard: null as Card | null,
+        factor: null as FactorID | null,
+        countdown: 10,
+        showSettings: false,
+        options: Options.defaultOptions,
+        lastNotify: 0,
+        lastSound: 0,
+    };
+    type RenderState = typeof defaultRenderState;
+
+    export function View({ cardData }: Props) {
+        type FactorFilter = FactorID | "auto";
+        const [drillCards, setDrillCards] = useAtom(appState.drillCards);
+        const [state, setState] = useState<RenderState>(defaultRenderState);
+        const audioPlayer = useRef<AudioPlayer$.Control | null>(null);
+
+        const { current: refState } = useRef({
+            reviewingCards: [] as Card[],
+        });
+
+        function update(fn: (arg: RenderState) => void | unknown) {
+            const newState = produce(state, (draft) => {
+                fn(draft);
+            });
+            setState(newState);
+            return newState;
+        }
+
+        function updateOptions(fn: (arg: Options.T) => void | unknown) {
+            const state = update((s) => {
+                s.countdown = s.options.secondsPerCard;
+                fn(s.options);
+            });
+            Options.save(state.options);
+
+            return state;
         }
 
         function onHuh() {
-            audioPlayer.current = null;
-            setCountdown(0);
+            update((s) => updateNextCard(s, refState.reviewingCards));
         }
-        function onForgot(card: Card) {
-            audioPlayer.current = null;
-            if (!selectedCards.find((c) => c.id === card.id)) {
-                setSelectedCards(selectedCards.concat(card));
-                setCountdown(startCountdown);
+
+        function onAdd(card: Card | null) {
+            if (!card) return;
+
+            if (!drillCards.find((c) => c.id === card.id)) {
+                setDrillCards(drillCards.concat(card));
+                update((s) => updateNextCard(s, refState.reviewingCards));
             }
         }
 
-        const card = reviewingCards[index];
+        useInterval(
+            1000,
+            () => {
+                update((s) => {
+                    const n = s.countdown;
+                    s.countdown = n > 0 ? n - 1 : 0;
+                    const card = refState.reviewingCards[state.index];
+                    tryPlaySound(s, card, audioPlayer.current);
+
+                    if (s.countdown === 0) {
+                        s.countdown = s.options.secondsPerCard;
+                        updateNextCard(s, refState.reviewingCards);
+                    }
+                });
+            },
+            [state],
+        );
+
+        useEffect(() => {
+            const newState = produce(defaultRenderState, (state) => {
+                const cards = shuffle(cardData)
+                    .slice(0, 120)
+                    .map((c) => Card.parse(c));
+
+                const options = Options.load();
+                state.options = options;
+                state.index = -1;
+                refState.reviewingCards = cards;
+
+                updateNextCard(state, cards);
+            });
+
+            setState(newState);
+        }, [cardData, refState]);
+
+        const card = refState.reviewingCards[state.index];
         if (!card) {
             return <Container>no more cards for recap</Container>;
         }
 
         const randomExample = randomElem(card.examples);
+        const options = state.options;
 
         return (
             <Container>
-                <Flex justifyContent={"end"} mb={Shoe.spacing_large}>
-                    {!showSettings ? (
-                        <Space />
-                    ) : (
-                        <CardBox>
-                            <Row>
-                                <SettingsLabel>show</SettingsLabel>
-                                {Object.keys(Factor)
-                                    .concat("auto")
-                                    .map((f) => (
-                                        <label key={f}>
-                                            <Checkbox
-                                                checked={f === factorFilter}
-                                                onSlChange={() => onChangeFilter(f as FactorFilter)}
-                                            >
-                                                {f}
-                                            </Checkbox>
-                                        </label>
-                                    ))}
-                            </Row>
-                            <Row>
-                                <SettingsLabel>seconds / card</SettingsLabel>
-                                <Range
-                                    min={defaultStartCountdown}
-                                    max={defaultStartCountdown * 10}
-                                    value={startCountdown}
-                                    onSlChange={(e) => {
-                                        const target = e.target as RangeRef;
-                                        setStartCountdown(target.value);
-                                    }}
-                                />
-                            </Row>
-                        </CardBox>
-                    )}
-                    <Button onClick={() => setShowSettings(!showSettings)} size="small">
-                        <Icon slot="prefix" name="gear-wide" />
-                    </Button>
-                </Flex>
+                <CardBox>
+                    <Flex justifyContent={"space-between"}>
+                        <CardInfo card={card} />
+                        <Button
+                            onClick={() => update((s) => (s.showSettings = !s.showSettings))}
+                            size="small"
+                        >
+                            <Icon slot="prefix" name="gear-wide" />
+                        </Button>
+                    </Flex>
+                    <Flex
+                        hide={!state.showSettings}
+                        direction="column"
+                        alignItems={"start"}
+                        mb={Shoe.spacing_large}
+                        cmt={Shoe.spacing_small_2x}
+                    >
+                        <Flex cmr={Shoe.spacing_small}>
+                            <SettingsLabel>show</SettingsLabel>
+                            {Object.keys(Factor)
+                                .concat("auto")
+                                .map((f) => (
+                                    <Checkbox
+                                        key={f}
+                                        name="factors"
+                                        value={f}
+                                        checked={f === options.factor}
+                                        onSlChange={() =>
+                                            updateOptions((o) => (o.factor = f as FactorFilter))
+                                        }
+                                    >
+                                        {f}
+                                    </Checkbox>
+                                ))}
+                        </Flex>
+                        <Flex>
+                            <SettingsLabel>seconds / card</SettingsLabel>
+                            <Range
+                                min={5}
+                                max={60}
+                                value={options.secondsPerCard}
+                                onSlChange={(e) => {
+                                    const value: number =
+                                        EventUtil.value(e) ?? options.secondsPerCard;
+                                    updateOptions((o) => (o.secondsPerCard = value));
+                                }}
+                            />
+                        </Flex>
+                        <Flex>
+                            <SettingsLabel>sound delay loop </SettingsLabel>
+                            <Range
+                                min={3}
+                                max={Math.max(options.secondsPerCard, 3)}
+                                value={options.soundDelay}
+                                onSlChange={(e) =>
+                                    updateOptions(
+                                        (o) => (o.soundDelay = EventUtil.value(e) ?? o.soundDelay),
+                                    )
+                                }
+                            />
+                        </Flex>
+                        <Flex>
+                            <SettingsLabel>show notification</SettingsLabel>
+                            <Checkbox
+                                checked={options.notify}
+                                onSlChange={(e) =>
+                                    updateOptions((o) => (o.notify = EventUtil.isChecked(e)))
+                                }
+                            ></Checkbox>
+                        </Flex>
+                    </Flex>
+                </CardBox>
+
+                <Details summary="see details">
+                    <FactorDetails card={card} except={state.factor} />
+                </Details>
 
                 <lt.Row justifyContent={"center"} direction={"column"}>
                     {card.contextHint && <Hint>{card.contextHint}</Hint>}
-                    {factor &&
-                        (factor === "text" && randomExample?.length ? (
+                    {state.factor &&
+                        (state.factor === "text" && randomExample?.length ? (
                             <TestedFactor
                                 dangerouslySetInnerHTML={{
                                     __html: marked.parse(randomExample),
                                 }}
                             />
-                        ) : factor === "sound" ? (
+                        ) : state.factor === "sound" ? (
                             <AudioPlayer
                                 src={card.factorData["sound"] ?? ""}
                                 ref={(ref) => (audioPlayer.current = ref)}
                             />
                         ) : (
-                            <TestedFactor>{card.factorData[factor]}</TestedFactor>
+                            <TestedFactor>{card.factorData[state.factor]}</TestedFactor>
                         ))}
+
                     <div>
-                        {factor} ({countdown})
+                        {state.factor} ({state.countdown})
                     </div>
+
                     <br />
                     <Flex>
                         <Button variant="neutral" onClick={onHuh} size="large">
-                            not sure (skip)
+                            next
                         </Button>
                         <Block mx={Shoe.spacing_medium}>??</Block>
                         <Button
                             size="large"
-                            variant="warning"
-                            onClick={() => onForgot(reviewingCards[index])}
-                            //ref={(ref) => ref?.focus()}
+                            variant={Card.isNew(card) ? "success" : "warning"}
+                            onClick={() => onAdd(card)}
                         >
-                            forgot
+                            {Card.isNew(card) ? "study" : "forgot"}
                         </Button>
                     </Flex>
                 </lt.Row>
             </Container>
         );
     }
-    const defaultStartCountdown = 10;
-    const Container = styled.div``;
-    const Row = styled(lt.Row)`
-        > * {
-            margin-left: 10px;
+
+    function FactorDetails({ card, except }: { card: Card; except: string | null }) {
+        const factors = Object.keys(Factor).filter((f) => f !== except);
+        factors.sort((a, b) => (a === "sound" ? -1 : 0));
+        return (
+            <FactorDetailsContainer>
+                {factors.map((f) => (
+                    <div key={f}>
+                        {f === "meaning" || f === "text" ? (
+                            <div>{card.factorData[f as FactorID]}</div>
+                        ) : f === "sound" ? (
+                            <AudioPlayer src={card.factorData.sound ?? ""} />
+                        ) : null}
+                    </div>
+                ))}
+            </FactorDetailsContainer>
+        );
+    }
+    const FactorDetailsContainer = styled.div`
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        div {
+            font-size: ${Shoe.font_size_large};
+            margin-right: ${Shoe.spacing_small};
         }
     `;
-    const Settings = styled.div<{ show: boolean }>`
-        ${(props) => (props.show ? "display: block; margin-bottom: 20px;" : "display: none;")}
-        border: 1px solid gray;
-        padding: 10px;
+
+    const Container = styled.div`
+        sl-card {
+            width: 100%;
+            ::part(body) {
+                padding: ${Shoe.spacing_small_x};
+            }
+        }
+        sl-details {
+            ::part(base) {
+                background: inherit;
+                border: 0;
+            }
+        }
     `;
     const SettingsLabel = styled.div`
         &::after {
             content: ":";
         }
         text-align: right;
+        margin-right: ${Shoe.spacing_small};
     `;
     const TestedFactor = styled.div`
         font-size: ${Shoe.font_size_2x_large};
@@ -236,6 +445,80 @@ export namespace SequentRecap$ {
         }
     `;
     const Hint = styled.div``;
+
+    function updateNextCard(state: RenderState, cards: Card[]) {
+        const { index, options } = state;
+
+        if (index + 1 >= cards.length) cards = shuffle(cards);
+        //audioPlayer.current = null;
+
+        let found = false;
+        for (let retry = 0; retry < cards.length; retry++) {
+            const i = (index + 1) % cards.length;
+            const card = cards[i];
+            if (!card) continue;
+
+            let factor: FactorID = "meaning";
+            if (options.factor === "auto") {
+                factor = Card.getRandomFactor(card);
+            } else if (card.availableFactors.has(options.factor)) {
+                factor = options.factor;
+            } else {
+                continue;
+            }
+
+            state.index = i;
+            state.factor = factor;
+            state.countdown = state.options.secondsPerCard;
+            state.lastSound = 0;
+
+            found = true;
+            break;
+
+            //elapsed.current.millis = 0;
+            //elapsed.current.lastUpdate = 0;
+            //elapsed.current.lastSound = 0;
+        }
+
+        if (!found) {
+            state.index = -1;
+        }
+    }
+
+    function tryPlaySound(
+        state: RenderState,
+        card: Card | null,
+        audioPlayer: AudioPlayer$.Control | null,
+    ) {
+        const { options, factor } = state;
+
+        const now = Date.now();
+        if (!card) return;
+        if (!audioPlayer) return;
+
+        const text = card.factorData.text ?? card.factorData.meaning;
+        if (factor === "sound") {
+            if (
+                canPlayAudio() &&
+                audioPlayer &&
+                !audioPlayer.isPlaying() &&
+                now - state.lastSound > options.soundDelay * 1000
+            ) {
+                audioPlayer.play();
+                if (card.factorData.text && state.options.notify) {
+                    app.Notify("", card.factorData.text);
+                }
+
+                state.lastSound = now;
+            }
+        } else if (text && state.options.notify) {
+            if (now - state.lastNotify > 10 * 1000) {
+                app.Notify("", text);
+                state.lastNotify = now;
+            }
+        }
+        return;
+    }
 }
 export const SequentRecap = memo(SequentRecap$.View);
 

@@ -16,7 +16,7 @@ async function main() {
     document.documentElement.className = "sl-theme-dark";
 
     setConfig(await app.GetConfig());
-    const root = createRoot(container!);
+    const root = createRoot(container!); // eslint-disable-line
 
     root.render(
         <React.StrictMode>

@@ -1,5 +1,5 @@
 import { Factors, FactorTrial } from "./factors";
-import { Assert, randomElem } from "./lib";
+import { randomElem } from "./lib";
 
 export namespace ShortAlternating {
     export interface Item {
@@ -43,7 +43,7 @@ export namespace ShortAlternating {
         return defaultResult;
     }
     export function getDueCards<T extends Item>(cards: T[], counter: number) {
-        return cards.filter((c) => c.interval < 0 || Math.floor(counter % c.interval) === 0);
+        return cards.filter((c) => c.interval <= 0 || Math.floor(counter % c.interval) === 0);
     }
 
     export function studyCard<T extends Item>(card: T, trial: FactorTrial, recalled: boolean) {

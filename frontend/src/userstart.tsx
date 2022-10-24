@@ -1,8 +1,7 @@
-import { FormEvent, FormEventHandler, useRef, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import "./App.css";
 import styled from "styled-components";
 import * as app from "../wailsjs/go/main/App";
-import { main as models } from "../wailsjs/go/models";
 import { Action, Action1, handleError as catchError } from "./lib";
 
 const TextDiv = styled.div({
@@ -18,8 +17,6 @@ const Ul = styled.div({
         marginLeft: 20,
     },
 });
-
-const Button = styled.div({});
 
 export interface PageListProps {
     index: number;
@@ -209,7 +206,7 @@ namespace InitialDeckPage {
             }
 
             setSubmitted(true);
-            const [_, err] = await catchError(app.CreateStartingDeck(deckName, true));
+            const [, err] = await catchError(app.CreateStartingDeck(deckName, true));
             if (!err) {
                 onSubmit(deckName);
             } else {
@@ -257,7 +254,7 @@ namespace InitialDeckPage {
 
                 <br />
                 <div>
-                    <button onClick={onSubmitData}>I'm ready!</button>
+                    <button onClick={onSubmitData}>I am ready!</button>
                 </div>
             </div>
         );
@@ -283,7 +280,7 @@ namespace ReadyPage {
                 <TextDiv>Great! You are good to go.</TextDiv>
 
                 <div>
-                    <button onClick={onSubmit}>let's go</button>
+                    <button onClick={onSubmit}>{"let's go"}</button>
                 </div>
             </div>
         );
@@ -324,7 +321,7 @@ export namespace UserStart {
                     <InitialDeckPage.View onSubmit={onSubmitDeck} />
                     <ReadyPage.View deck={deck} onSubmit={onSubmitReady} />
                     <div>
-                        <TextDiv>Huh, you shouldn't see this message.</TextDiv>
+                        <TextDiv>{"Huh, you shouldn't see this message."}</TextDiv>
                         <TextDiv>This is a glitch, reality is a glitch</TextDiv>
                         <TextDiv>You should, uh, restart the application.</TextDiv>
                     </div>

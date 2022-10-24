@@ -3,7 +3,7 @@ import styled from "styled-components";
 import { app } from "./api";
 import { lt } from "./layout";
 import { invoke } from "./lib";
-import { Action, Action1 } from "./lib";
+import { Action } from "./lib";
 
 interface ContainerProps {
     show: boolean;
@@ -47,9 +47,7 @@ export function Notes({ show, onClose }: { show: boolean; onClose: Action }) {
                 }
             }
         });
-    }, [show]);
-
-    useEffect(() => {}, []);
+    }, [show, notes]);
 
     return (
         <st.Container show={show}>

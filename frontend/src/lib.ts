@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { app, cardEvents, runtime } from "./api";
+import { app, cardEvents } from "./api";
 import { Card } from "./card";
 
 export type MainPages = "intro" | "drill" | "home" | "prepare";
@@ -36,13 +36,13 @@ export function wrapAsyncEffect(fn: () => void) {
     };
 }
 
-export function useAsyncEffect(fn: () => void, deps?: unknown[]) {
+export function useAsyncEffect(fn: () => void) {
     useEffect(() => {
         fn();
-    }, deps ?? []);
+    }, [fn]);
 }
 
-export function useAsyncEffectUnmount(fn: () => Promise<Action>, deps?: React.DependencyList[]) {
+export function useAsyncEffectUnmount(fn: () => Promise<Action>) {
     useEffect(() => {
         let unmount: Action;
         (async () => {
@@ -52,7 +52,7 @@ export function useAsyncEffectUnmount(fn: () => Promise<Action>, deps?: React.De
         return () => {
             unmount?.();
         };
-    }, deps ?? []);
+    }, [fn]);
 }
 
 export function range(n: number): number[] {
@@ -244,7 +244,6 @@ export function isSymbol(s: string) {
         case ".":
         case "/":
         case "?":
-        case " ":
         case "\n":
         case "\t":
         case "、":
@@ -276,7 +275,7 @@ export type TypeOf =
     | "object"
     | "function";
 export function hasProp<K extends PropertyKey>(
-    data: any,
+    data: any, // eslint-disable-line
     prop: K,
     type?: TypeOf,
 ): data is Record<K, unknown> {
@@ -331,6 +330,7 @@ export const useOnce = (() => {
 })();
 
 type TypePredicate<T> = (x: unknown) => x is T;
+// TODO: replace with zod
 export class LocalStorageSerializer<T> {
     defaultState: T;
     public lastState: T;
@@ -345,7 +345,7 @@ export class LocalStorageSerializer<T> {
     }
 
     load(): T {
-        let data = tryJSONParse(localStorage.getItem(this.lsKey) ?? "");
+        const data = tryJSONParse(localStorage.getItem(this.lsKey) ?? "");
         if (this.typePredicate(data) && data) {
             this.lastState = data;
             return data;
@@ -354,6 +354,8 @@ export class LocalStorageSerializer<T> {
         this.lastState = { ...this.defaultState };
         return this.lastState;
     }
+
+    // eslint-disable-next-line
     update(fn: (x: T) => any) {
         const val = this.lastState;
         fn(this.lastState);
@@ -375,29 +377,6 @@ export function randomColor() {
 export function k(obj: object) {
     for (const k of Object.keys(obj)) return k;
     return "";
-}
-
-export namespace Assert {
-    export type Comparer = (actual: any, expected: any) => boolean;
-    export function assert(
-        actual: unknown,
-        expected: unknown,
-        message?: string,
-        isEqual?: Comparer,
-    ) {
-        if (isEqual ? !isEqual(actual, expected) : actual !== expected) {
-            console.trace();
-            console.log({ actual, expected });
-            throw `assert failed: ${message}`;
-        }
-    }
-    export function tests(name: string, body: Action) {
-        return function () {
-            console.log(`%c* start testing ${name}`, "background: cyan;color: black");
-            body();
-            console.log(`%c* done testing ${name}`, "background: cyan;color: black");
-        };
-    }
 }
 
 export function getRelatedCharacters(str: string, count = 10): string[] {
@@ -434,9 +413,9 @@ export function useCardWatch(cardInit: Card) {
         cardEvents.addListener((card) => {
             setCard(card);
         });
-        app.WatchCardFile(card.path);
+        app.WatchCardFile(cardInit.path);
         return () => {
-            app.UnwatchCardFile(card.path);
+            app.UnwatchCardFile(cardInit.path);
         };
     }, [cardInit.path]);
 
@@ -453,21 +432,20 @@ export function partition<T>(xs: T[], p: (x: T) => boolean): [T[], T[]] {
     return [left, right];
 }
 
-export function useInterval(running: boolean, millis: number, fn: Action) {
+export function useInterval(millis: number, fn: Action, deps: unknown[]) {
     const timerRef = useRef<number | undefined>(undefined);
+
     useEffect(() => {
         window.clearInterval(timerRef.current);
-        if (!running) {
-            return;
-        }
 
         timerRef.current = window.setInterval(() => {
             fn();
-            if (!running) window.clearInterval(timerRef.current);
         }, millis);
 
         return () => window.clearInterval(timerRef.current);
-    }, [running, millis]);
+
+        // eslint-disable-next-line
+    }, [millis, ...deps]);
 }
 
 export function identity<T>(x: T) {

@@ -2,7 +2,7 @@ import { marked } from "marked";
 import { main } from "../wailsjs/go/models";
 import { config } from "./config";
 import { Factor, FactorData, FactorID, Factors, FactorTrial } from "./factors";
-import { Assert, currentDate, getPathName, k, randomElem, removeTrailingSlash } from "./lib";
+import { currentDate, getPathName, randomElem, removeTrailingSlash } from "./lib";
 
 export const baseLearnLevel = 0;
 export const baseReviewLevel = 11;
@@ -30,7 +30,6 @@ export type SideDirectiveKeys = typeof cardDirectiveKeys[number];
 export type Entry = { name: string; value: string };
 
 export type CardFaceData = {
-    card?: Card;
     text: string;
     html: string;
     contents?: (string | Entry)[];
@@ -97,10 +96,6 @@ export const Card = {
             lastRecallDate: 0,
             interval: 0,
         };
-
-        card.front.card = card;
-        card.back.card = card;
-        card.aside.card = card;
 
         return card;
     },
@@ -259,10 +254,6 @@ export const Card = {
         const back = card.back;
         const aside = card.aside;
 
-        front.card = card;
-        back.card = card;
-        aside.card = card;
-
         let current = front;
         let keywordFound = false;
         const lines: string[] = [];
@@ -276,7 +267,7 @@ export const Card = {
             }
 
             if (directive.name === "tags") {
-                var tags = directive.value.split(" ").map((t) => t.replace(/^#/, ""));
+                const tags = directive.value.split(" ").map((t) => t.replace(/^#/, ""));
                 for (const t of tags) {
                     card.tags.add(t);
                 }
@@ -355,7 +346,7 @@ export const Card = {
         for (const elem of links) {
             const filename = elem.textContent?.trim();
             const href = elem.href.trim();
-            let factorID = removeTrailingSlash(getPathName(href));
+            const factorID = removeTrailingSlash(getPathName(href));
             if (filename && (factorID === "sound" || factorID === "audio")) {
                 const filenames = filename.split(",").map((s) => s.trim());
                 for (const f of filenames) {
@@ -448,10 +439,6 @@ export const Card = {
         const aside = card.aside;
         const audios: string[] = [];
 
-        front.card = card;
-        back.card = card;
-        aside.card = card;
-
         let current = front;
         let keywordFound = false;
         const lines: string[] = [];
@@ -471,7 +458,7 @@ export const Card = {
             }
 
             if (directive.name === "tags") {
-                var tags = directive.value.split(" ").map((t) => t.replace(/^#/, ""));
+                const tags = directive.value.split(" ").map((t) => t.replace(/^#/, ""));
                 for (const t of tags) {
                     card.tags.add(t);
                 }

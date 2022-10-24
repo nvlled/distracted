@@ -7,7 +7,7 @@ import { appState } from "./state";
 import { Card } from "./card";
 import styled from "styled-components";
 import { Action } from "./lib";
-import { config as globalConfig } from "./config";
+import { config, config as globalConfig } from "./config";
 
 import { cardEvents } from "./api";
 import { lt } from "./layout";
@@ -17,11 +17,7 @@ import "@shoelace-style/shoelace/dist/themes/dark.css";
 import "./water-dark.css";
 
 import { Playground } from "./playground";
-import { SequentRecap } from "./discovery";
-import { UserStart } from "./userstart";
 import { GrindStudySession } from "./SessionDrill";
-import { DailyStudySession } from "./SessionPrepare";
-import { Notes } from "./Notes";
 // web server path? or filesystem path?
 //setBasePath("../public/");
 
@@ -107,55 +103,40 @@ Settings.ButtonDiv = styled.div`
     height: 100vh;
 `;
 
-const ClearButton = styled.button`
-    background: none;
-`;
-
 function App() {
-    const [deckFiles, setDeckFiles] = useAtom(appState.deckFiles);
-    const [decks, setDecks] = useAtom(appState.decks);
-    const [userData, setUserData] = useAtom(appState.userData);
-    const [config, setConfig] = useAtom(appState.config);
-    const [allUserCards, setAllUserCards] = useAtom(appState.allUserCards);
-    const [mainPage, setMainPage] = useAtom(appState.mainPage);
+    //const [deckFiles, setDeckFiles] = useAtom(appState.deckFiles);
+    const [, setDecks] = useAtom(appState.decks);
+    const [, setUserData] = useAtom(appState.userData);
+    const [, setConfig] = useAtom(appState.config);
+    const [, setAllUserCards] = useAtom(appState.allUserCards);
     const [drillCards, setDrillCards] = useAtom(appState.drillCards);
+    const [mainPage, setMainPage] = useAtom(appState.mainPage);
     const [initialized, setInitialized] = useState(false);
-    const [showNotes, setShowNotes] = useState(false);
-    const [sessionName, setSessionName] = useState<string>(config.defaultStudyName);
-    const [editDailies, setEditDailies] = useState(false);
+    //const [showNotes, setShowNotes] = useState(false);
+    //const [sessionName, setSessionName] = useState<string>(config.defaultStudyName);
+    //const [editDailies, setEditDailies] = useState(false);
 
-    const [showSettings, setShowSettings] = useState(false);
-
-    async function onStartDeckCreated(deck: string) {
-        setMainPage("drill");
-    }
-
-    async function onCreateSession(sessionName: string, cards: Card[]) {
-        console.log("onCreateSession", sessionName, cards);
-        setEditDailies(false);
-        setSessionName(sessionName);
-        setDrillCards(cards);
-        setMainPage("drill");
-    }
+    //const [showSettings, setShowSettings] = useState(false);
 
     useEffect(() => {
         async function init() {
-            const currentDeck = "japanese";
-            const [userData, cardFiles, decks, allUserCards] = await Promise.all([
+            const [userData, decks, allUserCards, cardIDs] = await Promise.all([
                 app.GetUserData(),
-                app.ListCards(currentDeck),
                 app.GetDecks(),
                 app.ListAllCards(),
+                app.GetDailyStudyCardIds(),
             ]);
 
             setConfig(globalConfig);
             setUserData(userData);
-            setDeckFiles({ ...deckFiles, [currentDeck]: cardFiles });
             setDecks(decks);
             setAllUserCards(allUserCards);
+
+            const idSet = new Set(cardIDs);
+            setDrillCards(allUserCards.filter((c) => idSet.has(c.id)).map((c) => Card.parse(c)));
+
             console.log(allUserCards.length);
 
-            setMainPage("home");
             setInitialized(true);
 
             runtime.EventsOn("card-file-updated", async (data) => {
@@ -176,17 +157,16 @@ function App() {
             app.ClearWatchedFiles();
         };
 
-        const keyHandler = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                setShowNotes(false);
-            }
-        };
-
-        window.onkeydown = keyHandler;
-        return () => {
-            window.onkeydown = null;
-        };
-    }, []);
+        //const keyHandler = (e: KeyboardEvent) => {
+        //    if (e.key === "Escape") {
+        //        setShowNotes(false);
+        //    }
+        //};
+        //window.onkeydown = keyHandler;
+        //return () => {
+        //    window.onkeydown = null;
+        //};
+    }, [setAllUserCards, setConfig, setDecks, setUserData]);
 
     if (!initialized) {
         return <div>loading</div>;
@@ -194,32 +174,40 @@ function App() {
 
     return (
         <div id="App">
-            <Playground />
-            <hr />
+            {/*drillCards.length > 0 && (
+                <GrindStudySession
+                    sessionName={config.defaultStudyName}
+                    initCards={drillCards}
+                    onQuit={() => {
+                        //setMainPage("home")
+                    } }
+                    onAddMoreCards={() => {
+                        //setEditDailies(true);
+                        //setMainPage("home");
+                    }}
+                />
+            )*/}
 
             {mainPage === "intro" ? (
-                <UserStart.View onSubmit={onStartDeckCreated} />
-            ) : mainPage == "drill" ? (
-                sessionName ? (
-                    <GrindStudySession
-                        sessionName={sessionName}
-                        initCards={drillCards}
-                        onQuit={() => setMainPage("home")}
-                        onAddMoreCards={() => {
-                            setEditDailies(true);
-                            setMainPage("home");
-                        }}
-                    />
-                ) : (
-                    "got a null session id"
-                )
+                "TODO"
+            ) : //<UserStart.View onSubmit={onStartDeckCreated} />
+            mainPage == "drill" ? (
+                <GrindStudySession
+                    sessionName={config.defaultStudyName}
+                    initCards={drillCards}
+                    onQuit={() => setMainPage("home")}
+                    //onAddMoreCards={() => {
+                    //    setEditDailies(true);
+                    //    setMainPage("home");
+                    //}}
+                />
             ) : mainPage == "home" ? (
-                <>
-                    <DailyStudySession onSubmit={onCreateSession} edit={editDailies} />
-                </>
+                <Playground onSubmit={() => setMainPage("drill")} />
             ) : (
                 <div>unknown page</div>
             )}
+
+            {/*
             <Notes show={showNotes} onClose={() => setShowNotes(false)} />
 
             {!showSettings ? (
@@ -230,6 +218,7 @@ function App() {
             ) : (
                 <Settings onSubmit={() => setShowSettings(false)} />
             )}
+            */}
         </div>
     );
 }
