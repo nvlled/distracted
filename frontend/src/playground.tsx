@@ -46,6 +46,7 @@ import { config } from "./config";
 // TODO: put volume control on AudioPlayer component
 //       - double click to show control
 //       - show tooltip help
+
 // TODO: reset all cards stats for testing
 
 // TODO: overview
@@ -95,6 +96,8 @@ export namespace Playground$ {
         const [collapseTabs, setCollapseTabs] = useState(false);
         const [allUserCards] = useAtom(appState.allUserCards);
         const [drillCards] = useAtom(appState.drillCards);
+        const [addedSet, setAddedSet] = useState(new Set<number>());
+
         const [filterOptions, setFilterOptions] = useState<CardFilter$.Options | undefined>(
             undefined,
         );
@@ -107,7 +110,8 @@ export namespace Playground$ {
         }, []);
 
         function onChangeTab(e: Event) {
-            const panel = (e.target as any).activeTab.panel ?? "";
+            // eslint-disable-next-line
+            const panel = (e.target as any).activeTab?.panel ?? "";
             if (panel !== "cards") {
                 setDiscoverTab(panel);
             }
@@ -124,13 +128,19 @@ export namespace Playground$ {
         }
 
         useEffect(() => {
+            setAddedSet(new Set(drillCards.map((c) => c.id)));
+        }, [drillCards]);
+
+        useEffect(() => {
             let rawCards = filterOptions
                 ? CardFilter$.filterCards(allUserCards, filterOptions)
                 : allUserCards;
 
+            rawCards = rawCards.filter((c) => !addedSet.has(c.id));
+
             rawCards = shuffle(rawCards);
             setFilteredCards(rawCards);
-        }, [allUserCards, filterOptions]);
+        }, [allUserCards, filterOptions, addedSet]);
 
         const discoverContent = (
             <>
@@ -201,11 +211,7 @@ export namespace Playground$ {
             </>
         );
 
-        const addedContent = (
-            <>
-                <SelectedCards onSubmit={onStart} />
-            </>
-        );
+        const addedContent = <SelectedCards onSubmit={onStart} />;
 
         return (
             <Container>

@@ -4,7 +4,7 @@ import styled from "styled-components";
 import { Card } from "./card";
 import { FactorData, FactorID, Factors, FactorTrial } from "./factors";
 import { DeckAudio, DeckAudioVolume } from "./DeckAudio";
-import { lt } from "./layout";
+import { Block, Flex, lt } from "./layout";
 import {
     Action,
     Action1,
@@ -22,6 +22,7 @@ import {
 } from "./lib";
 import { AudioPlayer } from "./AudioPlayer";
 import { CardView } from "./CardView";
+import { Button, Divider, Shoe } from "./shoelace";
 
 /*
 
@@ -164,7 +165,7 @@ namespace Observation$ {
                     {tested !== "sound" && <AudioPlayer src={card.factorData["sound"] ?? ""} />}
                     {card.factorData[tested === "text" ? "meaning" : "text"]}
                 </div>
-                <hr />
+                <Divider />
                 <div className="tested">{testedContent}</div>
                 {completed && (
                     <>
@@ -283,17 +284,21 @@ export namespace _ProficiencyTrial {
 
         const actionButton =
             state === "test" ? (
-                <button onClick={onSubmitTest}>show</button>
+                <Button onClick={onSubmitTest}>show</Button>
             ) : state === "prompt" ? (
                 <>
-                    <div>
-                        <button onClick={() => onSubmitAnswer(true)}>yes</button>
-                        do you remember?
-                        <button onClick={() => onSubmitAnswer(false)}>no</button>
-                    </div>
+                    <Flex cmr={Shoe.spacing_small}>
+                        <Button variant="danger" size="large" onClick={() => onSubmitAnswer(false)}>
+                            no
+                        </Button>
+                        <div>do you remember?</div>
+                        <Button variant="success" size="large" onClick={() => onSubmitAnswer(true)}>
+                            yes
+                        </Button>
+                    </Flex>
                 </>
             ) : (
-                <button onClick={onContinue}>continue</button>
+                <Button onClick={onContinue}>continue</Button>
             );
 
         let presentedContent = <></>;
@@ -322,17 +327,20 @@ export namespace _ProficiencyTrial {
 
         return (
             <Container>
-                <pre>{JSON.stringify(Factors.get(card.proficiency))}</pre>
-                {card.audios.map((src) => (
+                {/*card.audios.map((src) => (
                     <DeckAudioVolume key={src} src={src} />
-                ))}
-                <hr />
+                ))*/}
+                <Divider />
 
                 <div className="proficiency">
                     <div className="presented">{presentedContent}</div>
+
+                    <div className="sep">
+                        <Divider vertical />
+                    </div>
                     <div className="tested">{testedContent}</div>
                 </div>
-                <hr />
+                <Divider />
                 {state === "review" && card && (
                     <div>
                         <CardView card={card} />
@@ -363,7 +371,7 @@ export namespace _ProficiencyTrial {
         > .proficiency {
             min-height: 120px;
             display: flex;
-            align-items: center;
+            align-items: stretch;
             justify-content: space-around;
 
             .presented,
@@ -375,12 +383,14 @@ export namespace _ProficiencyTrial {
                 justify-content: center;
             }
             .presented {
-                border-right: 2px solid gray;
-                margin-right: 20px;
                 font-size: 2ch;
             }
             .tested {
                 font-size: 2ch;
+            }
+
+            sl-divider {
+                --color: teal;
             }
         }
 
@@ -1200,10 +1210,12 @@ namespace WordSearch$ {
                     Find at least one correct text{" "}
                     {revealProp && (
                         <>
-                            <button onClick={() => init(textProp)}>shuffle</button>
-                            <button disabled={reveal} onClick={() => setReveal(true)}>
+                            <Button size="small" onClick={() => init(textProp)}>
+                                shuffle
+                            </Button>
+                            <Button size="small" disabled={reveal} onClick={() => setReveal(true)}>
                                 show
-                            </button>
+                            </Button>
                         </>
                     )}
                 </div>

@@ -40,7 +40,7 @@ import { produce, enableMapSet } from "immer";
 import { canPlayAudio } from "./DeckAudio";
 import { Tick } from "./components";
 
-enableMapSet();
+//enableMapSet();
 
 function useReviewingCards(deckName?: string) {
     const [allCards, setAllCards] = useState<Card[]>([]);
@@ -176,7 +176,7 @@ export namespace SequentRecap$ {
 
     const defaultRenderState = {
         index: -1,
-        //currentCard: null as Card | null,
+        currentCard: null as Card | null,
         factor: null as FactorID | null,
         countdown: 10,
         showSettings: false,
@@ -192,9 +192,9 @@ export namespace SequentRecap$ {
         const [state, setState] = useState<RenderState>(defaultRenderState);
         const audioPlayer = useRef<AudioPlayer$.Control | null>(null);
 
-        const { current: refState } = useRef({
-            reviewingCards: [] as Card[],
-        });
+        //const { current: refState } = useRef({
+        //    reviewingCards: [] as Card[],
+        //});
 
         function update(fn: (arg: RenderState) => void | unknown) {
             const newState = produce(state, (draft) => {
@@ -215,7 +215,7 @@ export namespace SequentRecap$ {
         }
 
         function onHuh() {
-            update((s) => updateNextCard(s, refState.reviewingCards));
+            update((s) => updateNextCard(s, cardData));
         }
 
         function onAdd(card: Card | null) {
@@ -223,7 +223,7 @@ export namespace SequentRecap$ {
 
             if (!drillCards.find((c) => c.id === card.id)) {
                 setDrillCards(drillCards.concat(card));
-                update((s) => updateNextCard(s, refState.reviewingCards));
+                update((s) => updateNextCard(s, cardData));
             }
         }
 
@@ -233,12 +233,12 @@ export namespace SequentRecap$ {
                 update((s) => {
                     const n = s.countdown;
                     s.countdown = n > 0 ? n - 1 : 0;
-                    const card = refState.reviewingCards[state.index];
+                    const card = state.currentCard;
                     tryPlaySound(s, card, audioPlayer.current);
 
                     if (s.countdown === 0) {
                         s.countdown = s.options.secondsPerCard;
-                        updateNextCard(s, refState.reviewingCards);
+                        updateNextCard(s, cardData);
                     }
                 });
             },
@@ -246,25 +246,33 @@ export namespace SequentRecap$ {
         );
 
         useEffect(() => {
+            const cards = shuffle(cardData).slice(0, 1000);
+
             const newState = produce(defaultRenderState, (state) => {
-                const cards = shuffle(cardData)
-                    .slice(0, 120)
-                    .map((c) => Card.parse(c));
+                //.map((c) => Card.parse(c));
 
                 const options = Options.load();
                 state.options = options;
                 state.index = -1;
-                refState.reviewingCards = cards;
+                //refState.reviewingCards = cards;
 
                 updateNextCard(state, cards);
             });
 
             setState(newState);
-        }, [cardData, refState]);
+        }, [cardData, drillCards]);
 
-        const card = refState.reviewingCards[state.index];
+        const card = state.currentCard;
         if (!card) {
-            return <Container>no more cards for recap</Container>;
+            return (
+                <Container>
+                    No more cards for recap. If you need to add more:
+                    <ul>
+                        <li>change filter settings</li>
+                        <li>create more card files</li>
+                    </ul>
+                </Container>
+            );
         }
 
         const randomExample = randomElem(card.examples);
@@ -446,17 +454,23 @@ export namespace SequentRecap$ {
     `;
     const Hint = styled.div``;
 
-    function updateNextCard(state: RenderState, cards: Card[]) {
+    function updateNextCard(
+        state: RenderState,
+        cards: main.CardData[],
+        addedCardIds?: Set<number>,
+    ) {
         const { index, options } = state;
 
         if (index + 1 >= cards.length) cards = shuffle(cards);
         //audioPlayer.current = null;
 
         let found = false;
-        for (let retry = 0; retry < cards.length; retry++) {
-            const i = (index + 1) % cards.length;
-            const card = cards[i];
+        for (let n = 1; n <= cards.length; n++) {
+            const i = (index + n) % cards.length;
+            const card = Card.parse(cards[i]);
+
             if (!card) continue;
+            if (addedCardIds?.has(card.id)) continue;
 
             let factor: FactorID = "meaning";
             if (options.factor === "auto") {
@@ -471,6 +485,8 @@ export namespace SequentRecap$ {
             state.factor = factor;
             state.countdown = state.options.secondsPerCard;
             state.lastSound = 0;
+
+            state.currentCard = card;
 
             found = true;
             break;

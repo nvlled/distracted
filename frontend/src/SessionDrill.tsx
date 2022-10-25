@@ -23,6 +23,21 @@ import { AudioPlayer } from "./AudioPlayer";
 import { config } from "./config";
 import { ShortAlternating } from "./scheduler";
 import ReactMarkdown from "react-markdown";
+import {
+    Alert,
+    Button,
+    ButtonGroup,
+    Divider,
+    Drawer,
+    Icon,
+    Shoe,
+    Textarea,
+    Tooltip,
+} from "./shoelace";
+import { Block, Flex } from "./layout";
+import { appState } from "./state";
+import { useAtom } from "jotai";
+import { Flipper, Flipper$ } from "./App";
 
 const distractionSeconds = 1.0 * 60;
 const batchSize = 7;
@@ -37,11 +52,14 @@ namespace _GrindStudySession {
     }
     export function View(props: Props) {
         const { initCards, onQuit } = props;
+        const [actions] = useAtom(appState.actions);
         const [remind, setRemind] = useState(true);
         const [cards, setCards] = useState<Card[]>([]);
         const [breakTime, setBreakTime] = useState(false);
         const [cardID, setCardID] = useState<number | undefined>();
         const [loading, setLoading] = useState(false);
+        const [showActions, setShowActions] = useState(false);
+        const flipper = useRef<Flipper$.Control | null>(null);
 
         const containerRef = useRef<HTMLDivElement>(null);
 
@@ -64,9 +82,12 @@ namespace _GrindStudySession {
                 cards,
             );
             if (card) setCardID(card.id);
+            flipper.current?.flipIn();
             refs.secondsElapsed = 0;
             refs.state.counter = nextCounter;
         }
+
+        /*
         function waitAnimation(body: Action) {
             return new Promise<void>((resolve) => {
                 const div = containerRef.current;
@@ -83,9 +104,11 @@ namespace _GrindStudySession {
                 body();
             });
         }
+        */
 
         async function onSubmit(recalled: boolean, trial: FactorTrial) {
-            await waitAnimation(() => setLoading(true));
+            //await waitAnimation(() => setLoading(true));
+            await flipper.current?.flipOut();
 
             const currentCard = OrderedSet.get(cards, cardID);
             if (!currentCard) return;
@@ -123,7 +146,36 @@ namespace _GrindStudySession {
                 refs.breakTimeDuration += 5;
             }
 
+            await flipper.current?.flipIn();
             setLoading(false);
+        }
+
+        function onEditCard() {
+            const card = OrderedSet.get(cards, cardID);
+            if (!card) return;
+            app.OpenCardFile(card.path);
+            actions.toastInfo(`opened card file:<br />${card.path}`, { variant: "success" });
+            setShowActions(false);
+        }
+        function onRemoveCard() {
+            const card = OrderedSet.get(cards, cardID);
+            if (!card) return;
+            actions.toastInfo(`removed from today's study:<br />${card.path}`, {
+                variant: "warning",
+            });
+            setShowActions(false);
+
+            actions.removeDrillCard(card.id);
+            const updatedCards = cards.filter((c) => c.id !== card.id);
+
+            const { item: nextCard, nextCounter } = ShortAlternating.nextDue(
+                refs.state.counter,
+                refs.batchSize,
+                updatedCards,
+            );
+
+            setCards(updatedCards);
+            if (nextCard) setCardID(nextCard.id);
         }
 
         const init = useCallback(
@@ -221,16 +273,57 @@ namespace _GrindStudySession {
         return (
             <div>
                 <Container isLoading={loading} ref={containerRef}>
-                    {body}
+                    <Flex>
+                        <ButtonGroup>
+                            <Tooltip content="double-click to return">
+                                <Button onDoubleClick={() => actions.changePage("home")}>
+                                    <Icon slot="prefix" name="house" /> Main
+                                </Button>
+                            </Tooltip>
+                            {currentCard && (
+                                <Button onClick={() => setShowActions(true)}>
+                                    <Icon slot="prefix" name="card-text" /> Card
+                                </Button>
+                            )}
+                            <Button>
+                                <Icon slot="prefix" name="pencil-square" /> Queue
+                            </Button>
+                            <Button
+                                onClick={() =>
+                                    actions.setDrawer(
+                                        { title: "notes", keepOpen: true, width: "35vw" },
+                                        <Notes />,
+                                    )
+                                }
+                            >
+                                <Icon slot="prefix" name="pencil-square" /> Notes
+                            </Button>
+                            <Button>
+                                <Icon slot="prefix" name="gear" /> Settings
+                            </Button>
+                        </ButtonGroup>
+                    </Flex>
+                    <CardActions
+                        label={currentCard?.filename}
+                        show={showActions}
+                        onRemove={onRemoveCard}
+                        onEdit={onEditCard}
+                        onClose={() => setShowActions(false)}
+                    />
+                    <Flipper ref={flipper} rate={1.5}>
+                        {body}
+                    </Flipper>
                 </Container>
             </div>
         );
     }
 
     export const Container = styled.div<{ isLoading: boolean }>`
+        padding: ${Shoe.spacing_small};
         position: relative;
-        transition: top 0.3s;
+        /*transition: top 0.3s;*/
         top: ${(props) => (props.isLoading ? "-100vh" : "0")};
+        min-height: 50vh;
     `;
     export const Ready = styled.div`
         position: absolute;
@@ -321,3 +414,77 @@ function Reminders({ onSubmit }: { onSubmit: Action }) {
         </div>
     );
 }
+
+export namespace CardActions$ {
+    export interface Props {
+        label?: string;
+        show: boolean;
+        onEdit: Action;
+        onRemove: Action;
+        onClose: Action;
+    }
+    export function View({ label, show, onClose, onEdit, onRemove }: Props) {
+        return (
+            <Container>
+                <Drawer
+                    label={label ?? "card actions"}
+                    open={show}
+                    placement="top"
+                    onSlAfterHide={onClose}
+                    contained
+                >
+                    <Block>
+                        <Button onClick={onRemove}>Remove</Button>
+                        <br />
+                        Remove card from today's study. This will not delete the card.
+                        <Divider />
+                        <Button onClick={onEdit}>Edit</Button>
+                        <br />
+                        Edit the card file.
+                    </Block>
+                </Drawer>
+            </Container>
+        );
+    }
+    const Container = styled.div``;
+}
+export const CardActions = CardActions$.View;
+
+export namespace Notes$ {
+    export interface Props {}
+    export function View({}: Props) {
+        return (
+            <Container>
+                <Textarea />
+            </Container>
+        );
+    }
+    const Container = styled.div`
+        border: 1px solid red;
+
+        &,
+        textarea {
+            height: 100%;
+        }
+        sl-textarea {
+            &,
+            ::part(form-control),
+            ::part(form-control-input),
+            ::part(base),
+            ::part(textarea) {
+                height: 100%;
+            }
+        }
+    `;
+}
+export const Notes = Notes$.View;
+
+// TODO:
+export namespace CardListEditor$ {
+    export interface Props {}
+    export function View({}: Props) {
+        return <Container></Container>;
+    }
+    const Container = styled.div``;
+}
+export const CardListEditor = CardListEditor$.View;

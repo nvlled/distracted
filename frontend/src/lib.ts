@@ -448,6 +448,19 @@ export function useInterval(millis: number, fn: Action, deps: unknown[]) {
     }, [millis, ...deps]);
 }
 
+export function nop() {
+    /* do nothing */
+}
 export function identity<T>(x: T) {
     return x;
+}
+
+export function waitEvent(elem: HTMLElement, event: string): Promise<void> {
+    return new Promise((resolve) => {
+        const fn = () => {
+            elem.removeEventListener(event, fn);
+            resolve();
+        };
+        elem.addEventListener(event, fn);
+    });
 }

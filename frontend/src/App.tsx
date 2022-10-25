@@ -1,12 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import {
+    Component,
+    ForwardedRef,
+    forwardRef,
+    ReactNode,
+    useEffect,
+    useImperativeHandle,
+    useRef,
+    useState,
+} from "react";
 import "./App.css";
 import * as app from "../wailsjs/go/main/App";
 import * as runtime from "../wailsjs/runtime";
 import { useAtom } from "jotai";
-import { appState } from "./state";
+import { AppDrawerOptions, appState, ToastOptions } from "./state";
 import { Card } from "./card";
 import styled from "styled-components";
-import { Action } from "./lib";
+import { Action, MainPages, sleep, waitEvent } from "./lib";
 import { config, config as globalConfig } from "./config";
 
 import { cardEvents } from "./api";
@@ -18,6 +27,8 @@ import "./water-dark.css";
 
 import { Playground } from "./playground";
 import { GrindStudySession } from "./SessionDrill";
+import { AnimatedImageRef, Animation, AnimationRef, Button, Drawer } from "./shoelace";
+import { SlAnimation } from "@shoelace-style/shoelace/dist/react";
 // web server path? or filesystem path?
 //setBasePath("../public/");
 
@@ -103,8 +114,16 @@ Settings.ButtonDiv = styled.div`
     height: 100vh;
 `;
 
+const DrawerContainer = styled.div<{ width?: string }>`
+    > sl-drawer {
+        ${(props) => (props.width ? `--size: ${props.width};` : "")}
+    }
+`;
+const AppContainer = styled.div``;
+
 function App() {
     //const [deckFiles, setDeckFiles] = useAtom(appState.deckFiles);
+    const [, setActions] = useAtom(appState.actions);
     const [, setDecks] = useAtom(appState.decks);
     const [, setUserData] = useAtom(appState.userData);
     const [, setConfig] = useAtom(appState.config);
@@ -112,6 +131,9 @@ function App() {
     const [drillCards, setDrillCards] = useAtom(appState.drillCards);
     const [mainPage, setMainPage] = useAtom(appState.mainPage);
     const [initialized, setInitialized] = useState(false);
+
+    const [drawerContent, setDrawerContent] = useState<ReactNode | null>(null);
+    const [drawerOptions, setDrawerOptions] = useState<AppDrawerOptions | null>(null);
     //const [showNotes, setShowNotes] = useState(false);
     //const [sessionName, setSessionName] = useState<string>(config.defaultStudyName);
     //const [editDailies, setEditDailies] = useState(false);
@@ -119,6 +141,34 @@ function App() {
     //const [showSettings, setShowSettings] = useState(false);
 
     useEffect(() => {
+        setActions({
+            changePage: (name: MainPages) => {
+                setMainPage(name);
+            },
+            toggleNotes: () => {},
+            setDrawer: (options: AppDrawerOptions, content: ReactNode) => {
+                setDrawerContent(content);
+                setDrawerOptions(options);
+            },
+            toastInfo(message: string, options?: ToastOptions) {
+                const alert = Object.assign(document.createElement("sl-alert"), {
+                    variant: options?.variant ?? "primary",
+                    closable: true,
+                    duration: options?.duration ?? 5000,
+                    innerHTML: `
+                      <sl-icon name="info-circle" slot="icon"></sl-icon>
+                      ${message}
+                    `,
+                });
+
+                document.body.append(alert);
+                return alert.toast();
+            },
+            removeDrillCard(cardID: number) {
+                setDrillCards((cards) => cards.filter((c) => c.id !== cardID));
+            },
+        });
+
         async function init() {
             const [userData, decks, allUserCards, cardIDs] = await Promise.all([
                 app.GetUserData(),
@@ -168,12 +218,34 @@ function App() {
         //};
     }, [setAllUserCards, setConfig, setDecks, setUserData]);
 
+    const [x, setX] = useState(0);
+    const animRef = useRef<Flipper$.Control | null>(null);
+
     if (!initialized) {
         return <div>loading</div>;
     }
 
     return (
-        <div id="App">
+        <AppContainer id="App">
+            {drawerContent && (
+                <DrawerContainer width={drawerOptions?.width}>
+                    <Drawer
+                        label={drawerOptions?.title}
+                        open={true}
+                        onSlAfterHide={() => {
+                            setDrawerContent(null);
+                            setDrawerOptions(null);
+                        }}
+                        onSlRequestClose={(e) => {
+                            if ((e as any).detail.source === "overlay" && drawerOptions?.keepOpen) {
+                                e.preventDefault();
+                            }
+                        }}
+                    >
+                        {drawerContent}
+                    </Drawer>
+                </DrawerContainer>
+            )}
             {/*drillCards.length > 0 && (
                 <GrindStudySession
                     sessionName={config.defaultStudyName}
@@ -219,7 +291,70 @@ function App() {
                 <Settings onSubmit={() => setShowSettings(false)} />
             )}
             */}
-        </div>
+        </AppContainer>
     );
 }
 export default App;
+
+export namespace Flipper$ {
+    export interface Control {
+        flipOut: () => Promise<void>;
+        hide: () => Promise<void>;
+        show: () => Promise<void>;
+        flipIn: () => Promise<void>;
+    }
+    export interface Props {
+        children: ReactNode;
+        rate?: number;
+        //onTransition: Action;
+        //onEnd: Action;
+    }
+    export const View = forwardRef(function (
+        { rate, children }: Props,
+        ref: ForwardedRef<Control>,
+    ) {
+        const animRef = useRef<AnimationRef | null>(null);
+        const onMount = (ref: AnimationRef) => {
+            animRef.current = ref;
+            if (!ref) return;
+            ref.iterations = 1;
+            ref.playbackRate = rate ?? 1;
+        };
+
+        useImperativeHandle(
+            ref,
+            () => ({
+                flipOut: async () => {
+                    const anim = animRef.current;
+                    if (!anim) return;
+                    anim.name = "backOutLeft";
+                    anim.play = true;
+                    await waitEvent(anim, "sl-finish");
+                    anim.style.visibility = "hidden";
+                },
+                flipIn: async () => {
+                    const anim = animRef.current;
+                    if (!anim) return;
+                    anim.style.visibility = "visible";
+                    anim.name = "backInRight";
+                    anim.play = true;
+                    await waitEvent(anim, "sl-finish");
+                },
+                hide: async () => {
+                    const anim = animRef.current;
+                    if (!anim) return;
+                    anim.style.visibility = "hidden";
+                },
+                show: async () => {
+                    const anim = animRef.current;
+                    if (!anim) return;
+                    anim.style.visibility = "visible";
+                },
+            }),
+            [],
+        );
+        return <Animation ref={onMount}>{children}</Animation>;
+    });
+    const Container = styled.div``;
+}
+export const Flipper = Flipper$.View;

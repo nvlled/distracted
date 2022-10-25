@@ -1,7 +1,28 @@
 import { atom } from "jotai";
+import { ReactNode } from "react";
 import { main } from "../wailsjs/go/models";
 import { Card } from "./card";
-import { MainPages } from "./lib";
+import { MainPages, nop } from "./lib";
+
+export interface AppDrawerOptions {
+    title?: string;
+    keepOpen?: boolean;
+    width?: string;
+}
+
+export interface ToastOptions {
+    variant?: "default" | "primary" | "success" | "neutral" | "warning" | "danger" | "text";
+    duration?: number;
+}
+
+const actions = {
+    changePage: (name: MainPages) => nop(),
+    toggleNotes: () => nop(),
+    setDrawer: (options: AppDrawerOptions, content: ReactNode) => nop(),
+    toastInfo: (message: string, options?: ToastOptions) => nop(),
+    removeDrillCard: (cardID: number) => nop(),
+};
+export type AppActions = typeof actions;
 
 export const appState = {
     audio: atom(new Audio()),
@@ -24,4 +45,6 @@ export const appState = {
     currentCard: atom(undefined as Card | undefined),
 
     distractionMode: atom(false),
+
+    actions: atom(actions as AppActions),
 };
