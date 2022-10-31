@@ -27,7 +27,6 @@ export type AppActions = typeof actions;
 export const appState = {
     audio: atom(new Audio()),
     youtubeQueue: atom([] as { filename: string; link: string }[]),
-    config: atom(main.Config.createFrom()),
     userData: atom(main.UserData.createFrom()),
     mainPage: atom("home" as MainPages),
 

@@ -49,19 +49,22 @@ func NewApp() *App {
 	userData := NewUserData(app)
 	app.server = app.createServer()
 	app.userData = &userData
-	app.LoadConfig()
 	app.scheduler = CardScheduler{}
 	app.cardSearch = &CardSearch{
 		searchers: make(map[string]*Searcher),
 	}
 	app.notifierID = 1
 	app.notifierIDs = map[int]*Notifier{}
+	app.LoadConfig()
 
 	return app
 }
 
 func (self *App) startup(ctx context.Context) {
 	self.ctx = ctx
+	self.InitDB()
+	self.userData.Load()
+	self.config.LastReviewDate = self.LastReviewDate()
 
 	if self.startHidden {
 		runtime.Hide(ctx)
@@ -70,13 +73,9 @@ func (self *App) startup(ctx context.Context) {
 	runtime.LogSetLogLevel(ctx, logger.INFO)
 	runtime.WindowSetDarkTheme(self.ctx)
 
-	self.InitDB()
-
 	if !self.IsDataDirInitialized() {
 		self.InitDataDir()
 	}
-
-	self.userData.Load()
 
 	if w, err := fsnotify.NewWatcher(); err != nil {
 		self.Error(err)
@@ -296,7 +295,7 @@ func (self *App) CreateCardDBEntry(path string) (CardRow, error) {
 	row := CardRow{
 		Path:       path,
 		Md5sum:     md5sum,
-		LastUpdate: time.Now().Unix(),
+		LastUpdate: 0,
 	}
 	query := "" +
 		"INSERT INTO `cards` (`path`, `md5sum`, `lastUpdate`) " +
@@ -629,9 +628,9 @@ func (self *App) GetDecks() ([]string, error) {
 
 func (self *App) CreateStudySession(sessionName string, sessionType int, cardpaths []string) error {
 	date := self.CurrentDate()
-	if len(cardpaths) == 0 {
-		return nil
-	}
+	//if len(cardpaths) == 0 {
+	//	return nil
+	//}
 
 	db := self.dbAPI.db
 
@@ -852,6 +851,9 @@ func (self *App) PersistCardStats(card *CardData) error {
 		return errorList.ErrIOError
 	}
 
+	date := self.CurrentDate()
+	self.dbAPI.SetData(UserDataKeys.LastReviewDate, date)
+
 	return nil
 }
 
@@ -898,4 +900,25 @@ func (self *App) ListAllCards() ([]*CardData, error) {
 		}
 	}
 	return result, nil
+}
+
+func (self *App) LastReviewDate() int64 {
+	return int64(self.dbAPI.GetDataInt(UserDataKeys.LastReviewDate))
+}
+
+func (self *App) PreviousSessionCardIDs() ([]int64, error) {
+	currentDate := self.CurrentDate()
+	db := self.dbAPI.db
+
+	lastSessionDate := 0
+	err := db.Get(&lastSessionDate, "SELECT MAX(`ss`.`date`) FROM `study_session_cards` `ssc` INNER JOIN `study_sessions` `ss` ON `ss`.`ROWID` = `ssc`.`sessionID` WHERE `ss`.`date` < $1", currentDate)
+	if err != nil {
+		return nil, self.Error(err)
+	}
+	var rows []int64
+	err = db.Select(&rows, "SELECT `ssc`.`cardID` FROM `study_session_cards` `ssc` INNER JOIN `study_sessions` `ss` ON `ss`.`ROWID` = `ssc`.`sessionID` WHERE `ss`.`date` = $1 OR `ss`.`date` = $1-1", lastSessionDate)
+	if err != nil {
+		return nil, self.Error(err)
+	}
+	return rows, nil
 }

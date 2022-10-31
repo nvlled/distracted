@@ -1,4 +1,5 @@
 import { marked } from "marked";
+import { date } from "zod";
 import { main } from "../wailsjs/go/models";
 import { config } from "./config";
 import { Factor, FactorData, FactorID, Factors, FactorTrial } from "./factors";
@@ -167,7 +168,7 @@ export const Card = {
     getPhase(card: main.CardData): CardPhase {
         const reviews = Card.getReviewCount(card);
         if (reviews === 0) return "new";
-        if (card.proficiency <= config.maxLearnLevel) return "learn";
+        if (card.proficiency <= config().maxLearnLevel) return "learn";
         return "review";
     },
     isNew(card: main.CardData) {
@@ -189,8 +190,8 @@ export const Card = {
         const phase = Card.getPhase(card);
         return (
             (phase === "review" && card.lastRecallDate === date) ||
-            card.numRecall > config.maxLearnLevel / 2 ||
-            card.numForget > config.maxLearnLevel
+            card.numRecall > config().maxLearnLevel / 2 ||
+            card.numForget > config().maxLearnLevel
         );
     },
 
@@ -325,10 +326,10 @@ export const Card = {
     },
 
     getUrlPath(deckName: string, filename: string) {
-        if (filename.startsWith(`${config.baseUrlDecks}/`)) {
+        if (filename.startsWith(`${config().baseUrlDecks}/`)) {
             return filename;
         }
-        return `${config.baseUrlDecks}/${deckName}/${decodeURI(filename)}`;
+        return `${config().baseUrlDecks}/${deckName}/${decodeURI(filename)}`;
     },
 
     parseAudios(deckName: string, html: string) {
@@ -426,6 +427,10 @@ export const Card = {
                 warnings.push(`${factor} is specified more than once`);
             }
             result[factor] = data.length === 0 ? null : data;
+        }
+
+        if (result.text) {
+            result.text = result.text.replace(/\[\d+\]/g, "");
         }
 
         return { data: result, warnings };

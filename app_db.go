@@ -25,6 +25,7 @@ var UserDataKeys = struct {
 
 	TextEditor         int
 	LastUsedCollection int
+	LastReviewDate     int
 }{
 	IntroCompleted:     1,
 	DistractionIndex:   2,
@@ -37,6 +38,7 @@ var UserDataKeys = struct {
 
 	TextEditor:         8,
 	LastUsedCollection: 9,
+	LastReviewDate:     10,
 }
 
 type DBAPI struct {

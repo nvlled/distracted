@@ -8,27 +8,30 @@ import {
     useRef,
     useState,
 } from "react";
-import "./App.css";
 import * as app from "../wailsjs/go/main/App";
 import * as runtime from "../wailsjs/runtime";
 import { useAtom } from "jotai";
 import { AppDrawerOptions, appState, ToastOptions } from "./state";
 import { Card } from "./card";
 import styled from "styled-components";
-import { Action, MainPages, sleep, waitEvent } from "./lib";
-import { config, config as globalConfig } from "./config";
+import { Action, MainPages, sleep, useInterval, waitEvent } from "./lib";
+import { config, setConfig } from "./config";
 
 import { cardEvents } from "./api";
-import { lt } from "./layout";
+import { Flex, lt } from "./layout";
 
+import "./App.css";
 import "./style.css";
-import "@shoelace-style/shoelace/dist/themes/dark.css";
 import "./water-dark.css";
+import "@shoelace-style/shoelace/dist/themes/dark.css";
 
 import { Playground } from "./playground";
 import { GrindStudySession } from "./SessionDrill";
-import { AnimatedImageRef, Animation, AnimationRef, Button, Drawer } from "./shoelace";
+import { AnimatedImageRef, Animation, AnimationRef, Button, CardBox, Drawer } from "./shoelace";
 import { SlAnimation } from "@shoelace-style/shoelace/dist/react";
+import { Ap2 } from "./AudioPlayer";
+import { Space } from "./components";
+import { useOnMount, useOnUnmount, useSomeChanged, useChanged } from "./hooks";
 // web server path? or filesystem path?
 //setBasePath("../public/");
 
@@ -121,12 +124,12 @@ const DrawerContainer = styled.div<{ width?: string }>`
 `;
 const AppContainer = styled.div``;
 
+let appInitialized = false;
 function App() {
     //const [deckFiles, setDeckFiles] = useAtom(appState.deckFiles);
     const [, setActions] = useAtom(appState.actions);
     const [, setDecks] = useAtom(appState.decks);
     const [, setUserData] = useAtom(appState.userData);
-    const [, setConfig] = useAtom(appState.config);
     const [, setAllUserCards] = useAtom(appState.allUserCards);
     const [drillCards, setDrillCards] = useAtom(appState.drillCards);
     const [mainPage, setMainPage] = useAtom(appState.mainPage);
@@ -141,6 +144,10 @@ function App() {
     //const [showSettings, setShowSettings] = useState(false);
 
     useEffect(() => {
+        if (appInitialized) return;
+        appInitialized = true;
+        console.log("app init");
+
         setActions({
             changePage: (name: MainPages) => {
                 setMainPage(name);
@@ -177,7 +184,7 @@ function App() {
                 app.GetDailyStudyCardIds(),
             ]);
 
-            setConfig(globalConfig);
+            //setConfig(globalConfig);
             setUserData(userData);
             setDecks(decks);
             setAllUserCards(allUserCards);
@@ -197,6 +204,8 @@ function App() {
                 const card = Card.parse(cardData);
                 console.log("card-file-updated");
                 cardEvents.emit(card);
+                setDrillCards((cards) => cards.map((c) => (c.id !== card.id ? c : card)));
+                setAllUserCards((cards) => cards.map((c) => (c.id !== card.id ? c : cardData)));
             });
 
             app.ClearBreakTimeNotifiers();
@@ -216,14 +225,12 @@ function App() {
         //return () => {
         //    window.onkeydown = null;
         //};
-    }, [setAllUserCards, setConfig, setDecks, setUserData]);
+    }, []);
 
-    const [x, setX] = useState(0);
-    const animRef = useRef<Flipper$.Control | null>(null);
-
-    if (!initialized) {
-        return <div>loading</div>;
-    }
+    useInterval(30 * 60 * 1000, async () => {
+        const config = await app.GetConfig();
+        setConfig(config);
+    });
 
     return (
         <AppContainer id="App">
@@ -265,7 +272,7 @@ function App() {
             ) : //<UserStart.View onSubmit={onStartDeckCreated} />
             mainPage == "drill" ? (
                 <GrindStudySession
-                    sessionName={config.defaultStudyName}
+                    sessionName={config().defaultStudyName}
                     initCards={drillCards}
                     onQuit={() => setMainPage("home")}
                     //onAddMoreCards={() => {
@@ -298,6 +305,7 @@ export default App;
 
 export namespace Flipper$ {
     export interface Control {
+        reset: () => Promise<void>;
         flipOut: () => Promise<void>;
         hide: () => Promise<void>;
         show: () => Promise<void>;
@@ -306,8 +314,6 @@ export namespace Flipper$ {
     export interface Props {
         children: ReactNode;
         rate?: number;
-        //onTransition: Action;
-        //onEnd: Action;
     }
     export const View = forwardRef(function (
         { rate, children }: Props,
@@ -324,6 +330,11 @@ export namespace Flipper$ {
         useImperativeHandle(
             ref,
             () => ({
+                reset: async () => {
+                    const anim = animRef.current;
+                    if (!anim) return;
+                    anim.name = "";
+                },
                 flipOut: async () => {
                     const anim = animRef.current;
                     if (!anim) return;
@@ -358,3 +369,78 @@ export namespace Flipper$ {
     const Container = styled.div``;
 }
 export const Flipper = Flipper$.View;
+
+export namespace TestPrevState$ {
+    export interface Props {}
+    export function View({}: Props) {
+        const [count, setCount] = useState(0);
+        const [count2, setCount2] = useState(0);
+        const [square, setSquare] = useState(0);
+        const [msg, setMsg] = useState(`huh`);
+
+        const countChanged = useChanged(count);
+        const countChanged2 = useChanged(count2);
+        const countChanged3 = useSomeChanged(count, count2);
+        if (countChanged3) {
+            setSquare((count + count2) ** 2);
+        }
+
+        useOnMount(() => {
+            console.log("mount", { count });
+        });
+        useOnUnmount(() => {
+            console.log("unmount", { count });
+        });
+
+        /*
+        const updateMsg = useInterval(1000);
+        if (updateMsg) {
+            setCount(count + 1);
+            setMsg(`${Date.now()}`);
+            console.log("okay, but why doesn't this work?");
+        }
+        */
+
+        return (
+            <Container>
+                <div>? {msg}</div>
+                <CardBox>
+                    <Button onClick={() => setCount(count + 1)}>count={count}</Button>
+                    <Button onClick={() => setCount2(count2 + 1)}>count2={count2}</Button>
+                    <Button
+                        onClick={() => {
+                            setCount(count + 1);
+                            setCount2(count2 + 1);
+                        }}
+                    >
+                        both
+                    </Button>
+                    <Space />
+                    square={square}
+                </CardBox>
+            </Container>
+        );
+    }
+    const Container = styled.div``;
+
+    /*
+    function useInterval(millis: number) {
+        const [, setLastUpdate] = useState(0);
+        const ref = useRef(false);
+
+        useEffect(() => {
+            let timerID = setInterval(() => {
+                ref.current = true;
+                setLastUpdate(Date.now());
+            }, millis);
+            return () => clearInterval(timerID);
+        }, []);
+
+        const shouldRun = ref.current;
+        ref.current = false;
+
+        return shouldRun;
+    }
+    */
+}
+export const TestPrevState = TestPrevState$.View;

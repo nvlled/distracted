@@ -27,12 +27,22 @@ import {
     useCallback,
     useEffect,
     useImperativeHandle,
+    useMemo,
     useRef,
     useState,
 } from "react";
 import styled from "styled-components";
 import { Block, Flex } from "./layout";
-import { Action, Action1, Action2, OrderedSet, shuffle, tryJSONParse } from "./lib";
+import {
+    Action,
+    Action1,
+    Action2,
+    OrderedSet,
+    partition,
+    shuffle,
+    timeToDate,
+    tryJSONParse,
+} from "./lib";
 import { appState } from "./state";
 import { useAtom } from "jotai";
 import { Space } from "./components";
@@ -42,15 +52,6 @@ import produce from "immer";
 import { Card } from "./card";
 import { SequentRecap } from "./discovery";
 import { config } from "./config";
-
-// TODO: put volume control on AudioPlayer component
-//       - double click to show control
-//       - show tooltip help
-
-// TODO: reset all cards stats for testing
-
-// TODO: overview
-// TODO: modify search
 
 namespace TimeSpan {
     export type Unit = z.infer<typeof unitSchema>;
@@ -72,11 +73,11 @@ namespace TimeSpan {
         const day = 84600;
         switch (span.unit) {
             case "days":
-                return span.value * day;
+                return (span.value + 1) * day;
             case "weeks":
-                return span.value * 7 * day;
+                return (span.value + 1) * 7 * day;
             case "months":
-                return span.value * 30 * day;
+                return (span.value + 1) * 30 * day;
             default: {
                 console.warn(`unknown time unit: ${span.unit}`);
                 return 0;
@@ -96,12 +97,10 @@ export namespace Playground$ {
         const [collapseTabs, setCollapseTabs] = useState(false);
         const [allUserCards] = useAtom(appState.allUserCards);
         const [drillCards] = useAtom(appState.drillCards);
-        const [addedSet, setAddedSet] = useState(new Set<number>());
 
         const [filterOptions, setFilterOptions] = useState<CardFilter$.Options | undefined>(
             undefined,
         );
-        const [filteredCards, setFilteredCards] = useState<main.CardData[]>([]);
         const [discoverTab, setDiscoverTab] = useState("");
         const cardFilterRef = useRef<CardFilter$.Control>(null);
 
@@ -120,27 +119,24 @@ export namespace Playground$ {
 
         function onStart() {
             app.CreateStudySession(
-                config.defaultStudyName,
-                config.studySessionTypes.normal,
+                config().defaultStudyName,
+                config().studySessionTypes.normal,
                 drillCards.map((c) => c.path),
             );
             onSubmit();
         }
 
-        useEffect(() => {
-            setAddedSet(new Set(drillCards.map((c) => c.id)));
-        }, [drillCards]);
-
-        useEffect(() => {
+        const filteredCards = useMemo(() => {
+            const addedSet = new Set(drillCards.map((c) => c.id));
             let rawCards = filterOptions
                 ? CardFilter$.filterCards(allUserCards, filterOptions)
                 : allUserCards;
 
             rawCards = rawCards.filter((c) => !addedSet.has(c.id));
+            //rawCards = shuffle(rawCards);
 
-            rawCards = shuffle(rawCards);
-            setFilteredCards(rawCards);
-        }, [allUserCards, filterOptions, addedSet]);
+            return rawCards;
+        }, [allUserCards, filterOptions, drillCards]);
 
         const discoverContent = (
             <>
@@ -200,7 +196,7 @@ export namespace Playground$ {
                     <TabPanel name="overview">{discoverTab === "overview" && "TODO"}</TabPanel>
                     <TabPanel name="pick">
                         {discoverTab === "pick" && filterOptions && (
-                            <SequentRecap cardData={filteredCards} />
+                            <SequentRecap filter={filterOptions} />
                         )}
                     </TabPanel>
                     <TabPanel name="search">{discoverTab === "search" && "TODO"}</TabPanel>
@@ -377,6 +373,7 @@ export namespace CardFilter$ {
             });
             saveOptions(newOptions);
             setOptions(newOptions);
+            return newOptions;
         }
 
         const indent = Shoe.spacing_medium;
@@ -455,7 +452,7 @@ export namespace CardFilter$ {
                                 <Checkbox
                                     checked={options.reviewCards.all}
                                     onSlChange={() => {
-                                        const newSettings = produce(options, (s) => {
+                                        const newSettings = update((s) => {
                                             const r = s.reviewCards;
                                             r.all = true;
                                             r.include.enabled = false;
@@ -592,7 +589,7 @@ export namespace CardFilter$ {
             includeCard ||= isReview;
             includeCard ||= isNew;
 
-            if (!includeCard && reviewCards.enabled) {
+            if (!includeCard && reviewCards.enabled && Card.isReviewing(card)) {
                 const lastUpdate = card.lastUpdate;
                 const { include, exclude } = reviewCards;
                 includeCard ||= include.enabled && TimeSpan.withinLast(lastUpdate, include.value);
@@ -876,10 +873,9 @@ export namespace SelectedCards$ {
                 const cards = allUserCards.filter((c) => set.has(c.path)).map((c) => Card.parse(c));
                 setCards(cards);
                 setLines(lines);
-
                 await app.CreateStudySession(
-                    config.defaultStudyName,
-                    config.studySessionTypes.normal,
+                    config().defaultStudyName,
+                    config().studySessionTypes.normal,
                     cards.map((c) => c.path),
                 );
             }

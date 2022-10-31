@@ -22,6 +22,7 @@ func (app *App) LoadConfig() {
 		DailyStudyName:        DefaultStudyName,
 		MaxLearnLevel:         MaxLearnLevel,
 		CurrentDate:           app.CurrentDate(),
+		LastReviewDate:        123,
 		StudySessionTypes: StudySessionTypes{
 			Normal: StudySessionTypeNormal,
 			Quiz:   StudySessionTypeQuiz,

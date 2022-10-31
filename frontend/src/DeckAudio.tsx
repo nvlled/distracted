@@ -3,18 +3,34 @@ import styled from "styled-components";
 import { Card } from "./card";
 import { lt } from "./layout";
 import { Action, LocalStorageSerializer, sleep } from "./lib";
+import { Range, RangeRef, Shoe } from "./shoelace";
 
-const DeckAudioVolumeContainer = styled.div<{ warning: boolean }>`
+const DeckAudioVolumeContainer = styled.div<{ warning: boolean; danger: boolean }>`
     font-size: 10px;
-    .volume {
-        ${(props) => (!props.warning ? "" : "color: white; background: red")};
+    sl-range {
+        --track-color-inactive: ${Shoe.color_primary_400};
+        --track-color-active: ${Shoe.color_primary_600};
+        ${(props) =>
+            !props.danger
+                ? ""
+                : `
+                --track-color-inactive: ${Shoe.color_danger_400};
+                --track-color-active: ${Shoe.color_danger_500};
+        `}
+        ${(props) =>
+            !props.warning
+                ? ""
+                : `
+            --track-color-inactive: ${Shoe.color_warning_400};
+            --track-color-active: ${Shoe.color_warning_500};
+        `}
     }
 `;
 export function DeckAudioVolume({ src }: { src: string }) {
     const [volume, setVolume] = useState(1);
     const [filename, setFilename] = useState("");
-    function onChange(e: ChangeEvent<HTMLInputElement>) {
-        const volume = e.target.valueAsNumber;
+    function onChange(e: Event) {
+        const volume = (e.target as RangeRef).value;
         setVolume(volume);
 
         DeckAudio._init();
@@ -24,6 +40,7 @@ export function DeckAudioVolume({ src }: { src: string }) {
             DeckAudio._volumes[src] = volume;
         }
         serializer.save(DeckAudio._volumes);
+        DeckAudio.play(src);
     }
     useEffect(() => {
         DeckAudio._init();
@@ -38,19 +55,16 @@ export function DeckAudioVolume({ src }: { src: string }) {
     }, [src]);
 
     return (
-        <DeckAudioVolumeContainer warning={volume > 2}>
-            <lt.Row>
-                <input
-                    type="range"
-                    min={0.0}
-                    max={5}
-                    value={volume}
-                    onChange={onChange}
-                    step={0.25}
-                />
-                <div className="volume">{volume * 100}%</div>
-                {filename}
-            </lt.Row>
+        <DeckAudioVolumeContainer warning={volume > 1.2 && volume < 2} danger={volume >= 2}>
+            <Range
+                min={0.0}
+                max={3}
+                value={volume}
+                onSlChange={onChange}
+                step={0.1}
+                tooltipFormatter={(value) => `${Math.floor(value * 100)}%`}
+                invalid
+            />
         </DeckAudioVolumeContainer>
     );
 }
@@ -174,8 +188,13 @@ export const DeckAudio = {
         }
     },
 
-    async stop() {
+    async stop(src?: string) {
         const audio = DeckAudio._audio;
+        const playingSrc = decodeURIComponent(DeckAudio._toRelative(audio.src));
+        if (src !== undefined && src !== playingSrc) {
+            return;
+        }
+
         await DeckAudio.waitEvent(audio, ["error", "pause", "end", "abort"], () => {
             audio.pause();
             audio.currentTime = 0;

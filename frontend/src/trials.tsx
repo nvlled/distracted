@@ -19,8 +19,9 @@ import {
     randomElem,
     range,
     shuffle,
+    useCardWatch,
 } from "./lib";
-import { AudioPlayer } from "./AudioPlayer";
+import { Ap2, Ap2$, AudioPlayer } from "./AudioPlayer";
 import { CardView } from "./CardView";
 import { Button, Divider, Shoe } from "./shoelace";
 
@@ -202,7 +203,9 @@ export namespace _ProficiencyTrial {
         otherCards: Card[];
         onSubmit: Action2<boolean, FactorTrial>;
     }
-    export function View({ card, otherCards, onSubmit }: Props) {
+    export function View({ card: cardProp, otherCards, onSubmit }: Props) {
+        const [card] = useCardWatch(cardProp);
+
         const initialState: State = "test";
         const [state, setState] = useState<State>("test");
         const [audioPlaying, setAudioPlaying] = useState(false);
@@ -213,6 +216,9 @@ export namespace _ProficiencyTrial {
         });
         const [testNoise, setTestNoise] = useState("");
         const [recalled, setRecalled] = useState(false);
+
+        const presentedAudio = useRef<Ap2$.Control>(null);
+        const testedAudio = useRef<Ap2$.Control>(null);
 
         const { tested, presented } = trial;
 
@@ -237,35 +243,30 @@ export namespace _ProficiencyTrial {
             setRecalled(recalled);
         }
 
-        const init = useCallback(
-            function init(card: Card) {
-                const trial = Card.getTrial(card);
-                setState(initialState);
-
-                //trial.observation = true; // !!!
-                //trial.presented = "sound";
-                //trial.tested = "text";
-
-                const noise = otherCards
-                    .map((c) => c.factorData[trial.tested] ?? "")
-                    .filter((s) => !isPunctuation(s))
-                    .join("");
-
-                setAudioPlaying(false);
-                setRecalled(false);
-                setTestNoise(noise);
-                setTrial(trial);
-
-                if (trial.presented === "sound") {
-                    DeckAudio.play(card.factorData.sound ?? "");
-                }
-            },
-            [otherCards],
-        );
-
         useEffect(() => {
-            init(card);
-        }, [card, init]);
+            const trial = Card.getTrial(card);
+            setState(initialState);
+
+            //trial.observation = true; // !!!
+            //trial.presented = "sound";
+            //trial.tested = "text";
+
+            const noise = otherCards
+                .map((c) => c.factorData[trial.tested] ?? "")
+                .filter((s) => !isPunctuation(s))
+                .join("");
+
+            setAudioPlaying(false);
+            setRecalled(false);
+            setTestNoise(noise);
+            setTrial(trial);
+
+            if (trial.presented === "sound") {
+                console.log("play", card.factorData.sound);
+                //presentedAudio.current?.play();
+                //DeckAudio.play(card.factorData.sound ?? "");
+            }
+        }, [card]);
 
         if (trial.observation) {
             return (
@@ -305,7 +306,18 @@ export namespace _ProficiencyTrial {
         if (presented === "meaning" || presented === "text") {
             presentedContent = <>{card.factorData[presented]}</>;
         } else if (presented === "sound") {
-            presentedContent = <AudioPlayer src={card.factorData["sound"] ?? ""} />;
+            presentedContent = (
+                <Ap2
+                    key={card.factorData.sound ?? "presented-audio"}
+                    //ref={presentedAudio}
+                    ref={(ref) => {
+                        if (trial.presented === "sound" && state === "test") {
+                            ref?.play();
+                        }
+                    }}
+                    src={card.factorData["sound"] ?? ""}
+                />
+            );
         }
 
         let testedContent = <div className="recall-info">{`<recall ${tested}>`}</div>;
@@ -321,7 +333,13 @@ export namespace _ProficiencyTrial {
             if (tested === "meaning") {
                 testedContent = <>{card.factorData[tested]}</>;
             } else if (tested === "sound") {
-                testedContent = <AudioPlayer src={card.factorData["sound"] ?? ""} />;
+                testedContent = (
+                    <Ap2
+                        key={card.factorData.sound ?? "tested-audio"}
+                        ref={testedAudio}
+                        src={card.factorData["sound"] ?? ""}
+                    />
+                );
             }
         }
 
@@ -332,6 +350,11 @@ export namespace _ProficiencyTrial {
                 ))*/}
                 <Divider />
 
+                <Flex justifyContent={"start"}>
+                    <em>
+                        <small>{card.contextHint}</small>
+                    </em>
+                </Flex>
                 <div className="proficiency">
                     <div className="presented">{presentedContent}</div>
 

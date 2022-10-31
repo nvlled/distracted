@@ -1,6 +1,6 @@
 import { marked } from "marked";
 import { useAtom } from "jotai";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 import { app, main } from "./api";
 import { Card } from "./card";
@@ -9,17 +9,19 @@ import { Block, Flex, lt } from "./layout";
 import {
     createPair,
     currentDate,
+    OrderedSet,
     partition,
     randomElem,
     shuffle,
     sleep,
+    timeToDate,
     tryJSONParse,
     useAsyncEffect,
     useInterval,
     yesterDate,
 } from "./lib";
 import { appState } from "./state";
-import { AudioPlayer, AudioPlayer$ } from "./AudioPlayer";
+import { Ap2, Ap2$, AudioPlayer, AudioPlayer$ } from "./AudioPlayer";
 import {
     Badge,
     Button,
@@ -38,10 +40,15 @@ import {
 import { boolean, z } from "zod";
 import { produce, enableMapSet } from "immer";
 import { canPlayAudio } from "./DeckAudio";
-import { Tick } from "./components";
+import { Space, Tick } from "./components";
+import { config } from "./config";
+import { PreviousSessionCardIDs } from "../wailsjs/go/main/App";
+import { CardFilter$ } from "./playground";
+import { useOnMount, usePreviousSessionIDs, useSomeChanged } from "./hooks";
 
 //enableMapSet();
 
+/*
 function useReviewingCards(deckName?: string) {
     const [allCards, setAllCards] = useState<Card[]>([]);
     const [cards, setCards] = useState<Card[]>([]);
@@ -71,6 +78,7 @@ function useReviewingCards(deckName?: string) {
 
     return createPair(cards, setCards);
 }
+*/
 
 function CardInfo({ card }: { card: Card }) {
     return (
@@ -118,13 +126,9 @@ function TestInterval() {
     const [index, setIndex] = useState(0);
     const [count, setCount] = useState(0);
 
-    useInterval(
-        1000,
-        () => {
-            setCount((count) => count + 1);
-        },
-        [setCount],
-    );
+    useInterval(1000, () => {
+        setCount((count) => count + 1);
+    });
 
     return (
         <div>
@@ -143,6 +147,7 @@ export namespace SequentRecap$ {
             factor: z.enum(["meaning", "sound", "text", "auto"]),
             notify: z.boolean(),
             secondsPerCard: z.number().min(5),
+            autoplaySound: z.boolean(),
             soundDelay: z.number().min(3),
             notifyDelay: z.number().min(10),
         });
@@ -152,6 +157,7 @@ export namespace SequentRecap$ {
         export const defaultOptions: T = Object.freeze({
             factor: "auto",
             notify: false,
+            autoplaySound: true,
             secondsPerCard: 5,
             soundDelay: 5,
             notifyDelay: 10,
@@ -170,12 +176,9 @@ export namespace SequentRecap$ {
         }
     }
 
-    export interface Props {
-        cardData: main.CardData[];
-    }
-
     const defaultRenderState = {
         index: -1,
+        running: true,
         currentCard: null as Card | null,
         factor: null as FactorID | null,
         countdown: 10,
@@ -183,39 +186,52 @@ export namespace SequentRecap$ {
         options: Options.defaultOptions,
         lastNotify: 0,
         lastSound: 0,
+        lastShown: {} as Record<string, number | undefined>,
+        addedCards: {} as Record<number, boolean>,
     };
     type RenderState = typeof defaultRenderState;
 
-    export function View({ cardData }: Props) {
-        type FactorFilter = FactorID | "auto";
+    type FactorFilter = FactorID | "auto";
+
+    export interface Props {
+        filter: CardFilter$.Options;
+    }
+    export function View({ filter }: Props) {
+        const [allUserCards] = useAtom(appState.allUserCards);
         const [drillCards, setDrillCards] = useAtom(appState.drillCards);
         const [state, setState] = useState<RenderState>(defaultRenderState);
-        const audioPlayer = useRef<AudioPlayer$.Control | null>(null);
+        const [filteredCards, setFilteredCards] = useState<main.CardData[]>([]);
 
-        //const { current: refState } = useRef({
-        //    reviewingCards: [] as Card[],
-        //});
+        const audioPlayer = useRef<Ap2$.Control | null>(null);
+        const previousIDs = usePreviousSessionIDs();
 
-        function update(fn: (arg: RenderState) => void | unknown) {
-            const newState = produce(state, (draft) => {
+        type UpdateFn = (arg: RenderState) => void | unknown;
+        type UpdateOptionsFn = (arg: Options.T) => void | unknown;
+
+        function update(fn: UpdateFn, currentState?: RenderState) {
+            const newState = produce(currentState ?? state, (draft) => {
                 fn(draft);
             });
             setState(newState);
             return newState;
         }
-
-        function updateOptions(fn: (arg: Options.T) => void | unknown) {
-            const state = update((s) => {
+        function updateOptions(fn: UpdateOptionsFn) {
+            const nextState = update((s) => {
                 s.countdown = s.options.secondsPerCard;
                 fn(s.options);
             });
-            Options.save(state.options);
+
+            Options.save(nextState.options);
 
             return state;
         }
 
+        function onNextCard($state: RenderState) {
+            updateNextCard($state, filteredCards);
+        }
+
         function onHuh() {
-            update((s) => updateNextCard(s, cardData));
+            update((s) => onNextCard(s));
         }
 
         function onAdd(card: Card | null) {
@@ -223,47 +239,55 @@ export namespace SequentRecap$ {
 
             if (!drillCards.find((c) => c.id === card.id)) {
                 setDrillCards(drillCards.concat(card));
-                update((s) => updateNextCard(s, cardData));
             }
+
+            update(($state) => {
+                $state.addedCards[card.id] = true;
+                onNextCard($state);
+            });
         }
 
-        useInterval(
-            1000,
-            () => {
-                update((s) => {
-                    const n = s.countdown;
-                    s.countdown = n > 0 ? n - 1 : 0;
-                    const card = state.currentCard;
-                    tryPlaySound(s, card, audioPlayer.current);
+        useInterval(1000, () => {
+            update((s) => {
+                const n = s.countdown;
+                s.countdown = n > 0 ? n - 1 : 0;
+                const card = state.currentCard;
+                tryPlaySound(s, card, audioPlayer.current);
 
-                    if (s.countdown === 0) {
-                        s.countdown = s.options.secondsPerCard;
-                        updateNextCard(s, cardData);
-                    }
-                });
-            },
-            [state],
-        );
+                if (s.countdown === 0) {
+                    s.countdown = s.options.secondsPerCard;
+                    update(onNextCard);
+                }
+            });
+        });
 
-        useEffect(() => {
-            const cards = shuffle(cardData).slice(0, 1000);
+        const initialize = () => {
+            console.log("initializing state");
+            let rawCards = filter ? CardFilter$.filterCards(allUserCards, filter) : allUserCards;
+            rawCards = shuffleCards(rawCards, previousIDs);
+            setFilteredCards(rawCards);
 
-            const newState = produce(defaultRenderState, (state) => {
-                //.map((c) => Card.parse(c));
+            update(($state) => {
+                for (const c of drillCards) {
+                    $state.addedCards[c.id] = true;
+                }
 
                 const options = Options.load();
-                state.options = options;
-                state.index = -1;
-                //refState.reviewingCards = cards;
+                $state.options = options;
+                $state.index = -1;
 
-                updateNextCard(state, cards);
+                updateNextCard($state, rawCards);
             });
+        };
 
-            setState(newState);
-        }, [cardData, drillCards]);
+        useOnMount(initialize);
+
+        if (useSomeChanged(filter, drillCards)) {
+            initialize();
+        }
 
         const card = state.currentCard;
-        if (!card) {
+        if (!card || filteredCards.length === 0) {
             return (
                 <Container>
                     No more cards for recap. If you need to add more:
@@ -278,17 +302,47 @@ export namespace SequentRecap$ {
         const randomExample = randomElem(card.examples);
         const options = state.options;
 
+        if (!state.running) {
+            return (
+                <Container>
+                    <Flex justifyContent={"center"} direction="column">
+                        <Block p={Shoe.spacing_large_x}>
+                            <Icon name="info-circle" />
+                            <Space />
+                            Pick cards to study for the day.
+                            <br />
+                            <br />
+                            Use this to find cards that you may have forgotten, or discover new
+                            cards to learn. It's recommended that you add as many card as you can,
+                            even if you don't manage or plan to study them within the day. The
+                            algorithm will adjust the difficulty for you, and more cards results to
+                            better spacing.
+                            <br />
+                            <br />
+                            Of course, it's still up to you how you prefer to study.
+                        </Block>
+                        <Button onClick={() => update((s) => (s.running = true))}>okay</Button>
+                    </Flex>
+                </Container>
+            );
+        }
+
         return (
             <Container>
                 <CardBox>
                     <Flex justifyContent={"space-between"}>
                         <CardInfo card={card} />
-                        <Button
-                            onClick={() => update((s) => (s.showSettings = !s.showSettings))}
-                            size="small"
-                        >
-                            <Icon slot="prefix" name="gear-wide" />
-                        </Button>
+                        <Block cml={Shoe.spacing_small_2x}>
+                            <Button size="small" onClick={() => update((s) => (s.running = false))}>
+                                stop
+                            </Button>
+                            <Button
+                                onClick={() => update((s) => (s.showSettings = !s.showSettings))}
+                                size="small"
+                            >
+                                <Icon slot="prefix" name="gear-wide" />
+                            </Button>
+                        </Block>
                     </Flex>
                     <Flex
                         hide={!state.showSettings}
@@ -329,19 +383,6 @@ export namespace SequentRecap$ {
                             />
                         </Flex>
                         <Flex>
-                            <SettingsLabel>sound delay loop </SettingsLabel>
-                            <Range
-                                min={3}
-                                max={Math.max(options.secondsPerCard, 3)}
-                                value={options.soundDelay}
-                                onSlChange={(e) =>
-                                    updateOptions(
-                                        (o) => (o.soundDelay = EventUtil.value(e) ?? o.soundDelay),
-                                    )
-                                }
-                            />
-                        </Flex>
-                        <Flex>
                             <SettingsLabel>show notification</SettingsLabel>
                             <Checkbox
                                 checked={options.notify}
@@ -350,6 +391,35 @@ export namespace SequentRecap$ {
                                 }
                             ></Checkbox>
                         </Flex>
+
+                        <Block b={"1px"} p={Shoe.spacing_medium}>
+                            <Flex>
+                                <SettingsLabel>auto-play sound</SettingsLabel>
+                                <Checkbox
+                                    checked={options.autoplaySound}
+                                    onSlChange={(e) =>
+                                        updateOptions(
+                                            (o) => (o.autoplaySound = EventUtil.isChecked(e)),
+                                        )
+                                    }
+                                ></Checkbox>
+                            </Flex>
+                            <Flex>
+                                <SettingsLabel>sound delay loop </SettingsLabel>
+                                <Range
+                                    min={3}
+                                    max={Math.max(options.secondsPerCard, 3)}
+                                    value={options.soundDelay}
+                                    disabled={!options.autoplaySound}
+                                    onSlChange={(e) =>
+                                        updateOptions(
+                                            (o) =>
+                                                (o.soundDelay = EventUtil.value(e) ?? o.soundDelay),
+                                        )
+                                    }
+                                />
+                            </Flex>
+                        </Block>
                     </Flex>
                 </CardBox>
 
@@ -367,7 +437,7 @@ export namespace SequentRecap$ {
                                 }}
                             />
                         ) : state.factor === "sound" ? (
-                            <AudioPlayer
+                            <Ap2
                                 src={card.factorData["sound"] ?? ""}
                                 ref={(ref) => (audioPlayer.current = ref)}
                             />
@@ -408,7 +478,7 @@ export namespace SequentRecap$ {
                         {f === "meaning" || f === "text" ? (
                             <div>{card.factorData[f as FactorID]}</div>
                         ) : f === "sound" ? (
-                            <AudioPlayer src={card.factorData.sound ?? ""} />
+                            <Ap2 src={card.factorData.sound ?? ""} />
                         ) : null}
                     </div>
                 ))}
@@ -454,23 +524,64 @@ export namespace SequentRecap$ {
     `;
     const Hint = styled.div``;
 
-    function updateNextCard(
-        state: RenderState,
-        cards: main.CardData[],
-        addedCardIds?: Set<number>,
-    ) {
+    function shuffleCards(cards: main.CardData[], previousIDs: Set<number>) {
+        const [recent, others] = partition(cards, (c) => {
+            return previousIDs.has(c.id);
+        });
+        others.sort((a, b) => a.lastUpdate - b.lastUpdate);
+
+        return shuffle(recent).concat(shuffle(others.slice(0, 100)));
+    }
+
+    function updateNextCard(state: RenderState, cards: main.CardData[]) {
+        const { index } = state;
+
+        //if (index >= cards.length) {
+        //    state.running = false;
+        //    return;
+        //}
+
+        if (Object.keys(state.lastShown).length >= pickSettings.bufferSize) {
+            const now = Date.now();
+            for (const [cardID, time] of Object.entries(state.lastShown)) {
+                if (!time || now - time > pickSettings.cardShownDelay) {
+                    delete state.lastShown[cardID];
+                }
+            }
+        }
+
+        const result = findNextCard(state, cards);
+        console.log(result?.index, result?.card);
+
+        if (!result) {
+            state.index = -1;
+            state.currentCard = null;
+        } else {
+            const { card, index: nextIndex, factor } = result;
+            state.index = nextIndex;
+            state.factor = factor;
+            state.countdown = state.options.secondsPerCard;
+            state.lastSound = 0;
+            state.currentCard = card;
+            state.lastShown[card.id] = Date.now();
+        }
+    }
+
+    type findNextCardResult = {
+        card: Card;
+        index: number;
+        factor: FactorID;
+    };
+    function findNextCard(state: RenderState, cards: main.CardData[]): findNextCardResult | null {
         const { index, options } = state;
+        let result: findNextCardResult | null = null;
 
-        if (index + 1 >= cards.length) cards = shuffle(cards);
-        //audioPlayer.current = null;
-
-        let found = false;
         for (let n = 1; n <= cards.length; n++) {
-            const i = (index + n) % cards.length;
-            const card = Card.parse(cards[i]);
+            const i = index + n;
+            const card = Card.parse(cards[i % cards.length]);
 
             if (!card) continue;
-            if (addedCardIds?.has(card.id)) continue;
+            if (state.addedCards[card.id]) continue;
 
             let factor: FactorID = "meaning";
             if (options.factor === "auto") {
@@ -481,31 +592,28 @@ export namespace SequentRecap$ {
                 continue;
             }
 
-            state.index = i;
-            state.factor = factor;
-            state.countdown = state.options.secondsPerCard;
-            state.lastSound = 0;
+            const ret = { card, factor, index: i };
+            if (!result) result = ret;
 
-            state.currentCard = card;
+            const lastShown = state.lastShown[card.id];
+            if (lastShown) {
+                const now = Date.now();
+                if (now - lastShown < pickSettings.cardShownDelay) {
+                    continue;
+                }
+            }
+            /*
+             */
 
-            found = true;
-            break;
-
-            //elapsed.current.millis = 0;
-            //elapsed.current.lastUpdate = 0;
-            //elapsed.current.lastSound = 0;
+            return ret;
         }
+        // if all cards are already shown,
+        // return the first matching card anyway
 
-        if (!found) {
-            state.index = -1;
-        }
+        return result;
     }
 
-    function tryPlaySound(
-        state: RenderState,
-        card: Card | null,
-        audioPlayer: AudioPlayer$.Control | null,
-    ) {
+    function tryPlaySound(state: RenderState, card: Card | null, audioPlayer: Ap2$.Control | null) {
         const { options, factor } = state;
 
         const now = Date.now();
@@ -515,6 +623,7 @@ export namespace SequentRecap$ {
         const text = card.factorData.text ?? card.factorData.meaning;
         if (factor === "sound") {
             if (
+                state.options.autoplaySound &&
                 canPlayAudio() &&
                 audioPlayer &&
                 !audioPlayer.isPlaying() &&
@@ -535,6 +644,11 @@ export namespace SequentRecap$ {
         }
         return;
     }
+
+    const pickSettings = {
+        cardShownDelay: 10 * 60 * 1000,
+        bufferSize: 500,
+    };
 }
 export const SequentRecap = memo(SequentRecap$.View);
 

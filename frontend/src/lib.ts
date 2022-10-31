@@ -177,6 +177,13 @@ export function yesterDate() {
     const d = date.getDate();
     return d + m * 100 + y * 10000;
 }
+export function timeToDate(unixTimestamp: number) {
+    const date = new Date(unixTimestamp * 1000);
+    const y = date.getFullYear();
+    const m = date.getMonth() + 1;
+    const d = date.getDate();
+    return d + m * 100 + y * 10000;
+}
 export function currentDate() {
     const date = new Date();
     const y = date.getFullYear();
@@ -410,6 +417,7 @@ export function createPair<A, B>(a: A, b: B): [A, B] {
 export function useCardWatch(cardInit: Card) {
     const [card, setCard] = useState(cardInit);
     useEffect(() => {
+        setCard(cardInit);
         cardEvents.addListener((card) => {
             setCard(card);
         });
@@ -432,20 +440,18 @@ export function partition<T>(xs: T[], p: (x: T) => boolean): [T[], T[]] {
     return [left, right];
 }
 
-export function useInterval(millis: number, fn: Action, deps: unknown[]) {
-    const timerRef = useRef<number | undefined>(undefined);
+// referred from https://overreacted.io/making-setinterval-declarative-with-react-hooks/
+export function useInterval(millis: number, fn: Action) {
+    const savedCallback = useRef<Action | null>();
 
     useEffect(() => {
-        window.clearInterval(timerRef.current);
+        savedCallback.current = fn;
+    });
 
-        timerRef.current = window.setInterval(() => {
-            fn();
-        }, millis);
-
-        return () => window.clearInterval(timerRef.current);
-
-        // eslint-disable-next-line
-    }, [millis, ...deps]);
+    useEffect(() => {
+        let id = setInterval(() => savedCallback.current?.(), millis);
+        return () => clearInterval(id);
+    }, [millis]);
 }
 
 export function nop() {

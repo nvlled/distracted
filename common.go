@@ -51,6 +51,8 @@ type Config struct {
 	MaxLearnLevel int `json:"maxLearnLevel"`
 
 	CurrentDate int64 `json:"currentDate"`
+
+	LastReviewDate int64 `json:"lastReviewDate"`
 }
 
 type CardRow struct {

@@ -16,6 +16,7 @@ export namespace ShortAlternating {
         counter: number,
         batchSize: number,
         items: T[],
+        exceptID?: number,
     ): { item: T | undefined; nextCounter: number } {
         const defaultResult = { item: undefined, nextCounter: counter };
         if (items.length === 0) return defaultResult;
@@ -25,7 +26,7 @@ export namespace ShortAlternating {
         let nextCounter = counter;
         const allDueItems: T[] = [];
         for (let i = 0; i < maxInterval + 1; i++) {
-            const dueCards = getDueCards(items, nextCounter);
+            const dueCards = getDueCards(items, nextCounter, exceptID);
             allDueItems.push(...dueCards);
             nextCounter++;
 
@@ -42,8 +43,11 @@ export namespace ShortAlternating {
 
         return defaultResult;
     }
-    export function getDueCards<T extends Item>(cards: T[], counter: number) {
-        return cards.filter((c) => c.interval <= 0 || Math.floor(counter % c.interval) === 0);
+    export function getDueCards<T extends Item>(cards: T[], counter: number, exceptID?: number) {
+        return cards.filter((c) => {
+            if (exceptID === c.id) return false;
+            return c.interval <= 0 || Math.floor(counter % c.interval) === 0;
+        });
     }
 
     export function studyCard<T extends Item>(card: T, trial: FactorTrial, recalled: boolean) {

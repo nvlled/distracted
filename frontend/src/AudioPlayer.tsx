@@ -9,8 +9,21 @@ import React, {
     useState,
 } from "react";
 import styled from "styled-components";
-import { DeckAudio } from "./DeckAudio";
+import { DeckAudio, DeckAudioVolume } from "./DeckAudio";
+import { Block } from "./layout";
 import { Action, Action1, sleep } from "./lib";
+import {
+    Alert,
+    Button,
+    ButtonGroup,
+    CardBox,
+    Dialog,
+    Icon,
+    IconButton,
+    Range,
+    Shoe,
+    Tooltip,
+} from "./shoelace";
 
 export function playAudio(audio: HTMLAudioElement): Promise<void> {
     return new Promise((resolve) => {
@@ -179,3 +192,101 @@ export const AudioPlayer = memo(
     AudioPlayer$.View,
     (prevProps, props) => prevProps.src === props.src,
 );
+
+export namespace Ap2$ {
+    export interface Control {
+        play: () => Promise<void>;
+        stop: () => Promise<void>;
+        isPlaying: () => boolean;
+    }
+    export interface Props {
+        src: string;
+    }
+    export const View = forwardRef(({ src }: Props, ref: ForwardedRef<Control>) => {
+        const [showSettings, setShowSettings] = useState(false);
+        const [playing, setPlaying] = useState(false);
+        const [showTip, setShowTip] = useState(false);
+
+        const stateRef = useRef({
+            playing: false,
+        });
+
+        function updatePlaying(val: boolean) {
+            setPlaying(val);
+            stateRef.current.playing = val;
+        }
+
+        useImperativeHandle(
+            ref,
+            () => ({
+                isPlaying: () => stateRef.current.playing,
+                play: async () => {
+                    DeckAudio.stop(src);
+                    updatePlaying(true);
+                    await DeckAudio.play(src);
+                    updatePlaying(false);
+                },
+                stop: async () => {
+                    DeckAudio.stop(src);
+                    updatePlaying(false);
+                },
+            }),
+            [src],
+        );
+
+        async function onPlay() {
+            setShowTip(false);
+            if (!playing) {
+                updatePlaying(true);
+                await DeckAudio.play(src);
+                updatePlaying(false);
+            } else {
+                DeckAudio.stop(src);
+                updatePlaying(false);
+            }
+        }
+
+        return (
+            <Container>
+                <Dialog
+                    label="sound settings"
+                    open={showSettings}
+                    onSlAfterHide={() => setShowSettings(false)}
+                >
+                    <Block className="sound-settings-body">
+                        filename: {src}
+                        <br />
+                        <DeckAudioVolume src={src} />
+                    </Block>
+                </Dialog>
+                <Tooltip open={showTip && !playing} content={"right click to open settings"}>
+                    <IconButton
+                        name={!playing ? "play-circle" : "stop-circle"}
+                        onMouseOver={() => setShowTip(true)}
+                        onMouseOut={() => setShowTip(false)}
+                        onClick={onPlay}
+                        onContextMenu={(e) => {
+                            e.preventDefault();
+                            setShowSettings(true);
+                        }}
+                    />
+                </Tooltip>
+            </Container>
+        );
+    });
+    const Container = styled.div`
+        display: inline-block;
+        .sound-settings-body {
+            font-size: ${Shoe.font_size_small};
+        }
+        sl-dialog {
+            --width: 50vw;
+        }
+        sl-tooltip {
+            font-size: ${Shoe.font_size_x_large};
+            --max-width: 40vw;
+            --show-delay: 1000;
+        }
+    `;
+}
+export const Ap2 = Ap2$.View;

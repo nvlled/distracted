@@ -1,5 +1,7 @@
 import styled from "styled-components";
 import { Property } from "csstype";
+import { boolean } from "zod";
+import { Shoe } from "./shoelace";
 
 function entryPx(
     keyName: string,
@@ -10,7 +12,7 @@ function entryPx(
         return "";
     }
     const v = value ?? defaultValue;
-    return `${keyName}: ${typeof v === "number" ? `${v}x` : v}`;
+    return `${keyName}: ${typeof v === "number" ? `${v}px` : v}`;
 }
 
 export namespace lt {
@@ -47,8 +49,14 @@ export namespace lt {
         pr?: string | number | undefined;
         pt?: string | number | undefined;
         pb?: string | number | undefined;
+
+        b?: string | number | undefined;
+        bc?: string | undefined;
+        bt?: string | undefined;
     }
 }
+
+// TODO: remove
 export const lt = {
     Block: styled.div<lt.BlockProps>`
         ${(props) => entryPx("margin", props.m)}
@@ -120,6 +128,10 @@ export const Flex = styled.div<lt.RowProps & lt.BlockProps>`
     ${(props) => entryPx("padding-right", props.pr ?? props.px)};
     ${(props) => entryPx("padding-bottom", props.pb ?? props.py)};
     ${(props) => entryPx("padding-top", props.pt ?? props.py)};
+
+    ${(props) => entryPx("border-width", props.b, 0)};
+    ${(props) => entryPx("border-color", props.bc ?? Shoe.color_primary_900)};
+    ${(props) => entryPx("border-style", props.bt ?? "solid")};
 `;
 
 export const Block = styled.div<lt.BlockProps>`
@@ -145,4 +157,8 @@ export const Block = styled.div<lt.BlockProps>`
     ${(props) => entryPx("padding-right", props.pr ?? props.px)};
     ${(props) => entryPx("padding-bottom", props.pb ?? props.py)};
     ${(props) => entryPx("padding-top", props.pt ?? props.py)};
+
+    ${(props) => entryPx("border-width", props.b, 0)};
+    ${(props) => entryPx("border-color", props.bc ?? Shoe.input_border_color)};
+    ${(props) => entryPx("border-style", props.bt ?? "solid")};
 `;

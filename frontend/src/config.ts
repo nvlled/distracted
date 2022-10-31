@@ -1,7 +1,11 @@
 import { main } from "./api";
 
-export let config: main.Config = main.Config.createFrom();
+let _config: main.Config = main.Config.createFrom();
+
+export function config() {
+    return _config;
+}
 
 export function setConfig(newConfig: main.Config) {
-    config = newConfig;
+    _config = newConfig;
 }

@@ -1,7 +1,5 @@
-export {};
-
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import styled from "styled-components";
+import styled, { css } from "styled-components";
 import { main } from "../wailsjs/go/models";
 import { Card } from "./card";
 import { FactorTrial } from "./factors";
@@ -13,6 +11,8 @@ import {
     LocalStorageSerializer,
     OrderedSet,
     sleep,
+    useAsyncEffect,
+    useAsyncEffectUnmount,
     useCardWatch,
 } from "./lib";
 
@@ -32,6 +32,7 @@ import {
     Icon,
     Shoe,
     Textarea,
+    TextareaRef,
     Tooltip,
 } from "./shoelace";
 import { Block, Flex } from "./layout";
@@ -41,7 +42,6 @@ import { Flipper, Flipper$ } from "./App";
 
 const distractionSeconds = 1.0 * 60;
 const batchSize = 7;
-//
 
 namespace _GrindStudySession {
     export interface Props {
@@ -73,6 +73,12 @@ namespace _GrindStudySession {
             batchSize: batchSize,
             breakTimeDuration: distractionSeconds,
         });
+
+        const onMountFlipper = (ref: Flipper$.Control) => {
+            flipper.current = ref;
+        };
+
+        useEffect(() => {}, []);
 
         function onReturn() {
             setBreakTime(false);
@@ -108,6 +114,7 @@ namespace _GrindStudySession {
 
         async function onSubmit(recalled: boolean, trial: FactorTrial) {
             //await waitAnimation(() => setLoading(true));
+            await flipper.current?.reset();
             await flipper.current?.flipOut();
 
             const currentCard = OrderedSet.get(cards, cardID);
@@ -119,7 +126,6 @@ namespace _GrindStudySession {
                 c.path !== updatedCard.path ? c : updatedCard,
             );
 
-            console.log({ updatedCard });
             refs.state.elapsed = elapsed;
             refs.state.cardStatsMap = getCardStats(updatedCards);
 
@@ -127,13 +133,18 @@ namespace _GrindStudySession {
             setCards(updatedCards);
 
             if (refs.cardsReviewed++ < Math.min(refs.batchSize, cards.length)) {
-                const { item: card, nextCounter } = ShortAlternating.nextDue(
+                const { item: nextCard, nextCounter } = ShortAlternating.nextDue(
                     refs.state.counter,
                     refs.batchSize,
                     updatedCards,
+                    currentCard.id,
                 );
-                console.log("next card", card?.id);
-                if (card) setCardID(card.id);
+                if (nextCard) {
+                    setCardID(nextCard.id);
+                    console.log("card", currentCard.filename, "->", nextCard.filename);
+                } else {
+                    console.log("no next card");
+                }
                 refs.state.counter = nextCounter;
             } else {
                 setCardID(updatedCard.id);
@@ -146,6 +157,7 @@ namespace _GrindStudySession {
                 refs.breakTimeDuration += 5;
             }
 
+            await sleep(100);
             await flipper.current?.flipIn();
             setLoading(false);
         }
@@ -175,6 +187,7 @@ namespace _GrindStudySession {
             );
 
             setCards(updatedCards);
+            refs.state.counter = nextCounter;
             if (nextCard) setCardID(nextCard.id);
         }
 
@@ -195,9 +208,9 @@ namespace _GrindStudySession {
                     refs.batchSize,
                     cards,
                 );
-                console.log("current card>", card);
                 if (card) {
                     setCardID(card.id);
+                    //flipper.current?.flipIn();
                 }
 
                 refs.state.counter = nextCounter;
@@ -266,7 +279,7 @@ namespace _GrindStudySession {
         }
 
         // TODO:
-        if (config.currentDate !== currentDate()) {
+        if (config().currentDate !== currentDate()) {
             throw "nope";
         }
 
@@ -274,7 +287,7 @@ namespace _GrindStudySession {
             <div>
                 <Container isLoading={loading} ref={containerRef}>
                     <Flex>
-                        <ButtonGroup>
+                        <Buttons>
                             <Tooltip content="double-click to return">
                                 <Button onDoubleClick={() => actions.changePage("home")}>
                                     <Icon slot="prefix" name="house" /> Main
@@ -301,7 +314,7 @@ namespace _GrindStudySession {
                             <Button>
                                 <Icon slot="prefix" name="gear" /> Settings
                             </Button>
-                        </ButtonGroup>
+                        </Buttons>
                     </Flex>
                     <CardActions
                         label={currentCard?.filename}
@@ -310,13 +323,18 @@ namespace _GrindStudySession {
                         onEdit={onEditCard}
                         onClose={() => setShowActions(false)}
                     />
-                    <Flipper ref={flipper} rate={1.5}>
+                    <Flipper ref={onMountFlipper} rate={1.5}>
                         {body}
                     </Flipper>
                 </Container>
             </div>
         );
     }
+    const Buttons = styled(ButtonGroup)`
+        display: flex;
+        justify-content: center;
+        width: 100%;
+    `;
 
     export const Container = styled.div<{ isLoading: boolean }>`
         padding: ${Shoe.spacing_small};
@@ -356,7 +374,7 @@ namespace _GrindStudySession {
 
     namespace SerializedState {
         export const defaultState = () => ({
-            date: config.currentDate,
+            date: config().currentDate,
             counter: 0,
             elapsed: 0,
             cardStatsMap: {} as CardStatsMap,
@@ -453,15 +471,27 @@ export const CardActions = CardActions$.View;
 export namespace Notes$ {
     export interface Props {}
     export function View({}: Props) {
+        const ref = useRef<TextareaRef>(null);
+
+        useAsyncEffectUnmount(async () => {
+            const textarea = ref.current;
+            if (textarea) textarea.value = await app.GetNotes();
+
+            return () => {
+                if (textarea) {
+                    console.log("saving");
+                    app.SaveNotes(textarea.value);
+                }
+            };
+        });
+
         return (
             <Container>
-                <Textarea />
+                <Textarea ref={ref} autofocus />
             </Container>
         );
     }
     const Container = styled.div`
-        border: 1px solid red;
-
         &,
         textarea {
             height: 100%;

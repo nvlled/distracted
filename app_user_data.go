@@ -10,6 +10,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// TODO: remove everything here
 type UserData struct {
 	app *App
 
@@ -40,6 +41,7 @@ func (data *UserData) Save() {
 	data.SaveSubreddits()
 }
 func (data *UserData) Load() {
+	// TODO: remove
 	data.LoadInterests()
 	data.LoadSubreddits()
 
@@ -51,6 +53,7 @@ func (data *UserData) Load() {
 		data.Decks = decks
 	}
 
+	// TODO: remove
 	data.IntroCompleted = data.app.dbAPI.GetDataBool(UserDataKeys.IntroCompleted)
 	data.IsDownloading = data.app.dbAPI.GetDataBool(UserDataKeys.IsDownloading)
 	data.NumToDownload = data.app.dbAPI.GetDataInt(UserDataKeys.NumToDownload)
