@@ -320,7 +320,9 @@ export namespace _ProficiencyTrial {
             );
         }
 
-        let testedContent = <div className="recall-info">{`<recall ${tested}>`}</div>;
+        let testedContent = (
+            <div className="recall-info">{`${Factors.getIcon(tested)} recall ${tested}`}</div>
+        );
         if (tested === "text") {
             testedContent = (
                 <WordSearch
@@ -418,7 +420,6 @@ export namespace _ProficiencyTrial {
         }
 
         .recall-info {
-            font-size: 70%;
             font-style: italic;
             color: #ddd;
         }

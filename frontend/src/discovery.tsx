@@ -215,6 +215,7 @@ export namespace SequentRecap$ {
             setState(newState);
             return newState;
         }
+
         function updateOptions(fn: UpdateOptionsFn) {
             const nextState = update((s) => {
                 s.countdown = s.options.secondsPerCard;
@@ -248,15 +249,16 @@ export namespace SequentRecap$ {
         }
 
         useInterval(1000, () => {
-            update((s) => {
-                const n = s.countdown;
-                s.countdown = n > 0 ? n - 1 : 0;
+            update(($state) => {
+                const n = $state.countdown;
+                $state.countdown = n > 0 ? n - 1 : 0;
                 const card = state.currentCard;
-                tryPlaySound(s, card, audioPlayer.current);
+                tryPlaySound($state, card, audioPlayer.current);
 
-                if (s.countdown === 0) {
-                    s.countdown = s.options.secondsPerCard;
-                    update(onNextCard);
+                if ($state.countdown === 0) {
+                    $state.countdown = $state.options.secondsPerCard;
+                    // TODO:
+                    updateNextCard($state, filteredCards);
                 }
             });
         });
@@ -282,7 +284,7 @@ export namespace SequentRecap$ {
 
         useOnMount(initialize);
 
-        if (useSomeChanged(filter, drillCards)) {
+        if (useSomeChanged(filter)) {
             initialize();
         }
 
@@ -335,6 +337,9 @@ export namespace SequentRecap$ {
                         <Block cml={Shoe.spacing_small_2x}>
                             <Button size="small" onClick={() => update((s) => (s.running = false))}>
                                 stop
+                            </Button>
+                            <Button onClick={() => initialize()} size="small">
+                                <Icon slot="prefix" name="arrow-clockwise" />
                             </Button>
                             <Button
                                 onClick={() => update((s) => (s.showSettings = !s.showSettings))}
@@ -534,13 +539,6 @@ export namespace SequentRecap$ {
     }
 
     function updateNextCard(state: RenderState, cards: main.CardData[]) {
-        const { index } = state;
-
-        //if (index >= cards.length) {
-        //    state.running = false;
-        //    return;
-        //}
-
         if (Object.keys(state.lastShown).length >= pickSettings.bufferSize) {
             const now = Date.now();
             for (const [cardID, time] of Object.entries(state.lastShown)) {
@@ -551,7 +549,6 @@ export namespace SequentRecap$ {
         }
 
         const result = findNextCard(state, cards);
-        console.log(result?.index, result?.card);
 
         if (!result) {
             state.index = -1;

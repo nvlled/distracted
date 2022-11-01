@@ -188,6 +188,17 @@ export const Factors = {
         return Factors.toProficiency(factors);
     },
 
+    getIcon(factorID: FactorID) {
+        switch (factorID) {
+            case "text":
+                return "✧";
+            case "meaning":
+                return "✼";
+            case "sound":
+                return "🕪";
+        }
+    },
+
     /*
     test: Assert.tests("Factors", () => {
         const { assert } = Assert;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { app } from "./api";
 import { Action, invoke } from "./lib";
 
@@ -13,11 +13,17 @@ export function usePreviousSessionIDs() {
 }
 
 export function useOnMount(fn: Action) {
+    // eslint-disable-next-line
     useEffect(() => fn(), []);
 }
 export function useOnUnmount(fn: Action) {
+    const savedCallback = useRef<Action | null>();
+
     useEffect(() => {
-        return fn;
+        savedCallback.current = fn;
+    });
+    useEffect(() => {
+        return () => savedCallback.current?.();
     }, []);
 }
 
