@@ -12,7 +12,7 @@ export function usePreviousSessionIDs() {
     return ids;
 }
 
-export function useOnMount(fn: () => undefined | Promise<void>) {
+export function useOnMount(fn: () => void | Promise<void>) {
     // eslint-disable-next-line
     useEffect(() => {
         fn();

@@ -119,7 +119,6 @@ namespace _GrindStudySession {
                 elapsed: refs.secondsElapsed,
             });
 
-            //if (refs.cardsReviewed++ < Math.min(refs.batchSize, cards.length)) {
             if (refs.secondsElapsed < refs.studyBatchDuration * 60) {
                 const { item: nextCard, nextCounter } = ShortAlternating.nextDue(
                     refs.counter,
@@ -239,7 +238,7 @@ namespace _GrindStudySession {
                 <>
                     {breakTime && (
                         <TabOutDistraction
-                            card={currentCard}
+                            key={currentCard.id}
                             seconds={refs.breakTimeDuration * 60}
                             onReturn={onReturn}
                         />

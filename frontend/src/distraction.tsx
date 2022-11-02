@@ -10,21 +10,15 @@ import { Action, formatDuration, useAsyncEffectUnmount, useInterval } from "./li
 export namespace _TabOutDistraction {
     export const Container = styled.div``;
 
-    export function View({
-        card,
-        onReturn,
-        seconds,
-    }: {
-        card: Card;
-        onReturn: Action;
-        seconds: number;
-    }) {
+    export function View({ onReturn, seconds }: { onReturn: Action; seconds: number }) {
         const [countdown, setCountdown] = useState(seconds);
         const timerRef = useRef<number | undefined>();
         const notifierID = useRef<number | undefined>();
+        const initPromise = useRef<Promise<number> | null>(null);
 
         function stopNotifier() {
             const id = notifierID.current;
+            console.log("stopping notifier", id);
             if (id !== undefined) {
                 app.StopBreakTime(id);
             }
@@ -35,9 +29,14 @@ export namespace _TabOutDistraction {
         }
 
         useOnMount(async () => {
-            notifierID.current = await app.StartBreakTime(seconds);
+            initPromise.current = app.StartBreakTime(seconds);
+            notifierID.current = await initPromise.current;
+            console.log("notifier started", notifierID.current);
         });
-        useOnUnmount(() => {
+        useOnUnmount(async () => {
+            if (initPromise.current) {
+                await initPromise.current;
+            }
             stopNotifier();
             clearInterval(timerRef.current);
         });
@@ -64,8 +63,7 @@ export namespace _TabOutDistraction {
 
 export const TabOutDistraction = memo(
     _TabOutDistraction.View,
-    (prevProps, props) =>
-        prevProps.card.id === props.card.id && prevProps.seconds === props.seconds,
+    (prevProps, props) => prevProps.seconds === props.seconds,
 );
 
 //type DistractionContentType = "image" | "video" | "youtube-link" | "plaintext" | "unknown";
