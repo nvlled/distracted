@@ -4,7 +4,8 @@ import React, { memo, useCallback, useRef, useState } from "react";
 import styled from "styled-components";
 import { app } from "./api";
 import { Card } from "./card";
-import { Action, formatDuration, useAsyncEffectUnmount } from "./lib";
+import { useOnMount, useOnUnmount } from "./hooks";
+import { Action, formatDuration, useAsyncEffectUnmount, useInterval } from "./lib";
 
 export namespace _TabOutDistraction {
     export const Container = styled.div``;
@@ -19,10 +20,8 @@ export namespace _TabOutDistraction {
         seconds: number;
     }) {
         const [countdown, setCountdown] = useState(seconds);
-        //const [distractionMode, setDistractionMode] = useAtom(appState.distractionMode);
         const timerRef = useRef<number | undefined>();
         const notifierID = useRef<number | undefined>();
-        const mounted = useRef(false);
 
         function stopNotifier() {
             const id = notifierID.current;
@@ -35,36 +34,18 @@ export namespace _TabOutDistraction {
             onReturn();
         }
 
-        const init = useCallback(async () => {
-            const unmount = () => {
-                console.log("a");
-                stopNotifier();
-                clearInterval(timerRef.current);
-            };
-
-            if (mounted.current) {
-                return unmount;
-            }
-            mounted.current = true;
-
+        useOnMount(async () => {
             notifierID.current = await app.StartBreakTime(seconds);
-            console.log("notifier ID", notifierID.current);
-            timerRef.current = window.setInterval(() => {
-                setCountdown((c) => {
-                    if (c <= 0) {
-                        clearInterval(timerRef.current);
-                        //app.DistractionModeOff();
-                        //setDistractionMode(false);
-                        //onReturn();
-                    }
-                    return c - 1;
-                });
-            }, 1000);
-
-            return unmount;
-        }, [seconds]);
-
-        useAsyncEffectUnmount(init);
+        });
+        useOnUnmount(() => {
+            stopNotifier();
+            clearInterval(timerRef.current);
+        });
+        useInterval(1000, () => {
+            if (countdown > 0) {
+                setCountdown(countdown - 1);
+            }
+        });
 
         return (
             <Container>

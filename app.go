@@ -86,16 +86,16 @@ func (self *App) startup(ctx context.Context) {
 
 }
 
-func (self *App) startNotifier(id int, seconds int) {
+func (self *App) startNotifier(id int, seconds float64) {
 	notifier, ok := self.notifierIDs[id]
 	if !ok || notifier == nil {
 		return
 	}
 
 	for seconds > 0 {
-		//self.Debugf("tick %v", seconds)
 		time.Sleep(1 * time.Second)
 		seconds--
+		fmt.Printf(">%v", seconds)
 		if notifier.stopped {
 			return
 		}
@@ -112,7 +112,7 @@ func (self *App) Notify(title, message string) {
 	beeep.Notify(title, message, "icon.png")
 }
 
-func (self *App) StartBreakTime(seconds int) int {
+func (self *App) StartBreakTime(seconds float64) int {
 	id := self.notifierID
 	self.notifierID++
 
@@ -325,7 +325,7 @@ func (self *App) GetCardFromSession(path string, session string) (*CardData, err
 	var row CardRow
 
 	err = self.dbAPI.db.Get(
-		&row, "SELECT `ROWID` AS `id`, `md5sum`, `numRecall`, `numForget`, `consecRecall`, `consecForget`, `proficiency`, `lastUpdate`, `lastRecallDate`, `interval` "+
+		&row, "SELECT `ROWID` AS `id`, `md5sum`, `numRecall`, `numForget`, `consecRecall`, `consecForget`, `proficiency`, `lastUpdate`, `lastRecallDate`, `interval`, `counter` "+
 			"FROM `cards` WHERE `path` = ?", path,
 	)
 	if err != nil && err != sql.ErrNoRows {
@@ -359,6 +359,7 @@ func (self *App) GetCardFromSession(path string, session string) (*CardData, err
 			ConsecRecall: row.ConsecRecall,
 			ConsecForget: row.ConsecForget,
 			LastUpdate:   row.LastUpdate,
+			Counter:      row.Counter,
 		},
 	}
 
@@ -522,7 +523,7 @@ func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, erro
 	db := self.dbAPI.db
 
 	query := "SELECT `c`.`ROWID` AS `id`, `c`.`path`, `ssc`.`order`, " +
-		"`c`.`numRecall`, `c`.`numForget`, `c`.`consecRecall`, `c`.`consecForget`, `c`.`lastUpdate`, `c`.`proficiency`, `c`.`lastRecallDate`, `c`.`interval` " +
+		"`c`.`numRecall`, `c`.`numForget`, `c`.`consecRecall`, `c`.`consecForget`, `c`.`lastUpdate`, `c`.`proficiency`, `c`.`lastRecallDate`, `c`.`interval`, `c`.`counter` " +
 		"FROM `study_session_cards` `ssc` JOIN `cards` `c` ON `ssc`.`cardID` = `c`.`ROWID` JOIN `study_sessions` `sc` ON `sc`.`ROWID` = `ssc`.`sessionID` " +
 		"WHERE `sc`.`name` = $1 AND `sc`.`date` = $2 ORDER BY `ssc`.`order`, `c`.`ROWID` ASC"
 
@@ -539,6 +540,7 @@ func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, erro
 		ConsecForget   int   `db:"consecForget"`
 		LastUpdate     int64 `db:"lastUpdate"`
 		LastRecallDate int64 `db:"lastRecallDate"`
+		Counter        int64 `db:"counter"`
 	}
 	var rows []Row
 	err := db.Select(&rows, query, sessionName, date)
@@ -572,6 +574,7 @@ func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, erro
 				ConsecRecall: row.ConsecRecall,
 				ConsecForget: row.ConsecForget,
 				LastUpdate:   row.LastUpdate,
+				Counter:      row.Counter,
 			},
 		}
 
@@ -819,6 +822,7 @@ func (self *App) PersistCardStats(card *CardData) error {
 		ConsecForget   int   `db:"consecForget"`
 		LastUpdate     int64 `db:"lastUpdate"`
 		LastRecallDate int64 `db:"lastRecallDate"`
+		Counter        int64 `db:"counter"`
 	}{
 		ID:   card.ID,
 		Path: card.Path,
@@ -831,6 +835,7 @@ func (self *App) PersistCardStats(card *CardData) error {
 		ConsecForget:   card.ConsecForget,
 		LastUpdate:     card.LastUpdate,
 		LastRecallDate: card.LastRecallDate,
+		Counter:        card.Counter,
 	}
 
 	query := "" +
@@ -842,7 +847,8 @@ func (self *App) PersistCardStats(card *CardData) error {
 		"`consecRecall` = :consecRecall, " +
 		"`consecForget` = :consecForget, " +
 		"`lastUpdate`   = :lastUpdate, " +
-		"`lastRecallDate`   = :lastRecallDate " +
+		"`lastRecallDate`   = :lastRecallDate, " +
+		"`counter`   = :counter " +
 		"WHERE `path` = :path"
 
 	_, err := self.dbAPI.db.NamedExec(query, &cardsRow)

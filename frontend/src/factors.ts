@@ -191,9 +191,9 @@ export const Factors = {
     getIcon(factorID: FactorID) {
         switch (factorID) {
             case "text":
-                return "✧";
-            case "meaning":
                 return "✼";
+            case "meaning":
+                return "✧";
             case "sound":
                 return "🕪";
         }

@@ -10,6 +10,7 @@ export namespace ShortAlternating {
         consecRecall: number;
         consecForget: number;
         proficiency: number;
+        counter: number;
     }
 
     export function nextDue<T extends Item>(
@@ -37,16 +38,19 @@ export namespace ShortAlternating {
 
         allDueItems.sort(orderByIntervalDesc);
         console.log(items.map((c) => c.interval));
+
         const item = randomElem(allDueItems.slice(0, batchSize));
-        //const item = allDueItems[0];
-        if (item) return { item: item, nextCounter };
+        if (item) {
+            return { item: item, nextCounter };
+        }
 
         return defaultResult;
     }
     export function getDueCards<T extends Item>(cards: T[], counter: number, exceptID?: number) {
         return cards.filter((c) => {
             if (exceptID === c.id) return false;
-            return c.interval <= 0 || Math.floor(counter % c.interval) === 0;
+            //return c.interval <= 0 || Math.floor(counter % c.interval) === 0;
+            return c.interval <= 0 || Math.floor(counter - c.counter) >= c.interval;
         });
     }
 
@@ -65,14 +69,14 @@ export namespace ShortAlternating {
             console.log("next proficiency", Factors.get(card.proficiency));
             console.log("prev interval", card.interval);
             card.interval += Math.floor(
-                1 + Math.floor(card.consecRecall * Factors.getAverage(card.proficiency)),
+                1 + Math.floor(card.consecRecall * Factors.getAverage(card.proficiency)) ** 2,
             );
             console.log("next interval", card.interval);
         } else {
             card.numForget++;
             card.consecForget++;
             card.consecRecall = 0;
-            card.interval -= Math.floor(1 + (card.consecForget - 1) / 2);
+            card.interval -= Math.floor(1 + (card.consecForget - 1) / 2) ** 2;
         }
 
         if (card.interval < 0) {

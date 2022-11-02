@@ -95,6 +95,7 @@ export const Card = {
             consecForget: 0,
             lastUpdate: 0,
             lastRecallDate: 0,
+            counter: 0,
             interval: 0,
         };
 
@@ -228,13 +229,14 @@ export const Card = {
     getPresentedFactor(card: Card, testedFactor: FactorID): FactorID {
         const factors = Factors.get(card.proficiency, card.availableFactors);
         factors[testedFactor] = null;
-        if (card.consecRecall > 1) {
-            return Factors.getWeakestFactor(factors);
-        }
-        if (card.consecForget > 1) {
-            return Factors.getStrongestFactor(factors);
-        }
-        return Factors.getRandom(factors);
+        //if (card.consecRecall > 1) {
+        //    return Factors.getWeakestFactor(factors);
+        //}
+        //if (card.consecForget > 1) {
+        //    return Factors.getStrongestFactor(factors);
+        //}
+        return Factors.getWeakestFactor(factors);
+        //return Factors.getRandom(factors);
     },
 
     getTrial(card: Card): FactorTrial {

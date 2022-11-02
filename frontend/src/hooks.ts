@@ -12,9 +12,11 @@ export function usePreviousSessionIDs() {
     return ids;
 }
 
-export function useOnMount(fn: Action) {
+export function useOnMount(fn: () => undefined | Promise<void>) {
     // eslint-disable-next-line
-    useEffect(() => fn(), []);
+    useEffect(() => {
+        fn();
+    }, []);
 }
 export function useOnUnmount(fn: Action) {
     const savedCallback = useRef<Action | null>();

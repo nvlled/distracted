@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ZodRawShape } from "zod";
 import { app, cardEvents } from "./api";
 import { Card } from "./card";
 
@@ -469,4 +470,25 @@ export function waitEvent(elem: HTMLElement, event: string): Promise<void> {
         };
         elem.addEventListener(event, fn);
     });
+}
+
+export function parseZodFromLocalStorage<T extends ZodRawShape>(
+    schema: Zod.ZodObject<T>,
+    lsKey: string,
+) {
+    const res = schema.safeParse(tryJSONParse(localStorage.getItem(lsKey) ?? ""));
+    if (!res.success) {
+        console.log("failed to load options", res.error);
+        return null;
+    }
+    const options = res.data;
+    return options;
+}
+
+export function deferInvoke(millis: number, fn: Function) {
+    let timerID: number | undefined = undefined;
+    return function (...args: unknown[]): void {
+        window.clearInterval(timerID);
+        timerID = window.setTimeout(() => fn(...args), millis);
+    };
 }

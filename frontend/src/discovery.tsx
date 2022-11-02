@@ -44,7 +44,7 @@ import { Space, Tick } from "./components";
 import { config } from "./config";
 import { PreviousSessionCardIDs } from "../wailsjs/go/main/App";
 import { CardFilter$ } from "./playground";
-import { useOnMount, usePreviousSessionIDs, useSomeChanged } from "./hooks";
+import { useChanged, useOnMount, usePreviousSessionIDs, useSomeChanged } from "./hooks";
 
 //enableMapSet();
 
@@ -84,7 +84,6 @@ function CardInfo({ card }: { card: Card }) {
     return (
         <Block inline>
             <Flex mx={Shoe.spacing_small_2x} cml={Shoe.spacing_small_2x}>
-                {card.id}
                 {Card.isNew(card) && (
                     <div>
                         <Tooltip content="new card">
@@ -197,6 +196,7 @@ export namespace SequentRecap$ {
         filter: CardFilter$.Options;
     }
     export function View({ filter }: Props) {
+        const [actions] = useAtom(appState.actions);
         const [allUserCards] = useAtom(appState.allUserCards);
         const [drillCards, setDrillCards] = useAtom(appState.drillCards);
         const [state, setState] = useState<RenderState>(defaultRenderState);
@@ -257,7 +257,6 @@ export namespace SequentRecap$ {
 
                 if ($state.countdown === 0) {
                     $state.countdown = $state.options.secondsPerCard;
-                    // TODO:
                     updateNextCard($state, filteredCards);
                 }
             });
@@ -284,8 +283,11 @@ export namespace SequentRecap$ {
 
         useOnMount(initialize);
 
-        if (useSomeChanged(filter)) {
+        if (useChanged(filter)) {
             initialize();
+        }
+        if (useChanged(drillCards)) {
+            actions.saveCards(drillCards);
         }
 
         const card = state.currentCard;
@@ -333,7 +335,10 @@ export namespace SequentRecap$ {
             <Container>
                 <CardBox>
                     <Flex justifyContent={"space-between"}>
-                        <CardInfo card={card} />
+                        <div>
+                            <small>{(state.index % filteredCards.length) + 1}</small>.
+                            <CardInfo card={card} />
+                        </div>
                         <Block cml={Shoe.spacing_small_2x}>
                             <Button size="small" onClick={() => update((s) => (s.running = false))}>
                                 stop
@@ -535,7 +540,7 @@ export namespace SequentRecap$ {
         });
         others.sort((a, b) => a.lastUpdate - b.lastUpdate);
 
-        return shuffle(recent).concat(shuffle(others.slice(0, 100)));
+        return shuffle(recent).concat(shuffle(others));
     }
 
     function updateNextCard(state: RenderState, cards: main.CardData[]) {

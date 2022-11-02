@@ -16,11 +16,13 @@ export interface ToastOptions {
 }
 
 const actions = {
-    changePage: (name: MainPages) => nop(),
-    toggleNotes: () => nop(),
-    setDrawer: (options: AppDrawerOptions, content: ReactNode) => nop(),
-    toastInfo: (message: string, options?: ToastOptions) => nop(),
-    removeDrillCard: (cardID: number) => nop(),
+    changePage: (name: MainPages) => {},
+    toggleNotes: nop,
+    setDrawer: (options: AppDrawerOptions, content: ReactNode) => {},
+    showGrindSettings: () => {},
+    toastInfo: (message: string, options?: ToastOptions) => {},
+    removeDrillCard: (cardID: number) => {},
+    saveCards: (cards: Card[]) => {},
 };
 export type AppActions = typeof actions;
 

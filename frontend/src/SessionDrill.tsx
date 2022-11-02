@@ -10,10 +10,12 @@ import {
     hasProp,
     LocalStorageSerializer,
     OrderedSet,
+    parseZodFromLocalStorage,
     sleep,
     useAsyncEffect,
     useAsyncEffectUnmount,
     useCardWatch,
+    useInterval,
 } from "./lib";
 
 import { ProficiencyTrial } from "./trials";
@@ -38,7 +40,10 @@ import {
 import { Block, Flex } from "./layout";
 import { appState } from "./state";
 import { useAtom } from "jotai";
-import { Flipper, Flipper$ } from "./App";
+import { Flipper, Flipper$, GrindSettings$ } from "./App";
+import { useChanged, useOnMount } from "./hooks";
+import { z } from "zod";
+import { Space } from "./components";
 
 const distractionSeconds = 1.0 * 60;
 const batchSize = 7;
@@ -59,58 +64,34 @@ namespace _GrindStudySession {
         const [cardID, setCardID] = useState<number | undefined>();
         const [loading, setLoading] = useState(false);
         const [showActions, setShowActions] = useState(false);
+        const [options, setOptions] = useState(GrindSettings$.Options.current);
         const flipper = useRef<Flipper$.Control | null>(null);
 
         const containerRef = useRef<HTMLDivElement>(null);
 
         const { current: refs } = useRef({
-            state: SerializedState.defaultState(),
+            batchNum: 0,
+            counter: 0,
             cardsReviewed: 0,
-            initialized: false,
             secondsElapsed: 0,
 
-            timer: 0 as number | undefined,
             batchSize: batchSize,
-            breakTimeDuration: distractionSeconds,
+            studyBatchDuration: options.studyBatchDuration,
+            breakTimeDuration: options.breakTimeDuration,
         });
-
-        const onMountFlipper = (ref: Flipper$.Control) => {
-            flipper.current = ref;
-        };
-
-        useEffect(() => {}, []);
 
         function onReturn() {
             setBreakTime(false);
             const { item: card, nextCounter } = ShortAlternating.nextDue(
-                refs.state.counter,
+                refs.counter,
                 refs.batchSize,
                 cards,
             );
             if (card) setCardID(card.id);
             flipper.current?.flipIn();
             refs.secondsElapsed = 0;
-            refs.state.counter = nextCounter;
+            refs.counter = nextCounter;
         }
-
-        /*
-        function waitAnimation(body: Action) {
-            return new Promise<void>((resolve) => {
-                const div = containerRef.current;
-                if (!div) {
-                    return resolve();
-                }
-                const f = () => {
-                    div.removeEventListener("transitionend", f);
-                    div.removeEventListener("transitioncancel", f);
-                    sleep(256).then(resolve);
-                };
-                div.addEventListener("transitionend", f);
-                div.addEventListener("transitioncancel", f);
-                body();
-            });
-        }
-        */
 
         async function onSubmit(recalled: boolean, trial: FactorTrial) {
             //await waitAnimation(() => setLoading(true));
@@ -121,20 +102,27 @@ namespace _GrindStudySession {
             if (!currentCard) return;
 
             const elapsed = Math.min(refs.secondsElapsed, 60 * 5);
-            const updatedCard = await studyCard(currentCard, trial, recalled);
+            const updatedCard = await studyCard(refs.counter, currentCard, trial, recalled);
             const updatedCards = cards.map((c: Card) =>
                 c.path !== updatedCard.path ? c : updatedCard,
             );
 
-            refs.state.elapsed = elapsed;
-            refs.state.cardStatsMap = getCardStats(updatedCards);
+            //refs.state.elapsed = elapsed;
+            //refs.state.cardStatsMap = getCardStats(updatedCards);
 
-            SerializedState.save(refs.state);
             setCards(updatedCards);
 
-            if (refs.cardsReviewed++ < Math.min(refs.batchSize, cards.length)) {
+            PersistentState.save({
+                counter: refs.counter,
+                batchNum: refs.batchNum,
+                date: config().currentDate,
+                elapsed: refs.secondsElapsed,
+            });
+
+            //if (refs.cardsReviewed++ < Math.min(refs.batchSize, cards.length)) {
+            if (refs.secondsElapsed < refs.studyBatchDuration * 60) {
                 const { item: nextCard, nextCounter } = ShortAlternating.nextDue(
-                    refs.state.counter,
+                    refs.counter,
                     refs.batchSize,
                     updatedCards,
                     currentCard.id,
@@ -145,21 +133,30 @@ namespace _GrindStudySession {
                 } else {
                     console.log("no next card");
                 }
-                refs.state.counter = nextCounter;
+                refs.counter = nextCounter;
             } else {
-                setCardID(updatedCard.id);
-                setBreakTime(true);
-                refs.cardsReviewed = 0;
-
-                if (refs.batchSize < 20) {
-                    refs.batchSize += 0.3;
-                }
-                refs.breakTimeDuration += 5;
+                onBreakTime();
             }
 
             await sleep(100);
             await flipper.current?.flipIn();
             setLoading(false);
+        }
+
+        function onBreakTime() {
+            setBreakTime(true);
+            refs.cardsReviewed = 0;
+
+            if (refs.batchSize < 20) {
+                refs.batchSize += 0.3;
+            }
+            if (options.autoAdjust) {
+                const { batchNum, studyBatchDuration, breakTimeDuration } = refs;
+                const o = options;
+                refs.studyBatchDuration = blah(batchNum, studyBatchDuration, o.studyBatchDuration);
+                refs.breakTimeDuration = blah(batchNum, breakTimeDuration, o.breakTimeDuration);
+            }
+            refs.batchNum++;
         }
 
         function onEditCard() {
@@ -181,71 +178,57 @@ namespace _GrindStudySession {
             const updatedCards = cards.filter((c) => c.id !== card.id);
 
             const { item: nextCard, nextCounter } = ShortAlternating.nextDue(
-                refs.state.counter,
+                refs.counter,
                 refs.batchSize,
                 updatedCards,
             );
 
             setCards(updatedCards);
-            refs.state.counter = nextCounter;
+            refs.counter = nextCounter;
             if (nextCard) setCardID(nextCard.id);
         }
 
-        const init = useCallback(
-            function (cards: Card[]) {
-                const state = (refs.state = SerializedState.load());
-
-                cards = cards.map((c) => {
-                    const stats = state.cardStatsMap[c.id];
-                    if (stats) c = { ...c, ...stats };
-                    return c;
-                });
-
-                setCards(cards);
-
-                const { item: card, nextCounter } = ShortAlternating.nextDue(
-                    state.counter,
-                    refs.batchSize,
-                    cards,
-                );
-                if (card) {
-                    setCardID(card.id);
-                    //flipper.current?.flipIn();
-                }
-
-                refs.state.counter = nextCounter;
-                refs.batchSize = Math.min(refs.batchSize, cards.length);
-            },
-            [refs],
-        );
-
-        useEffect(() => {
-            if (refs.initialized) {
-                return;
+        const initialize = function () {
+            //const state = (refs.state = SerializedState.load());
+            const savedState = PersistentState.load();
+            if (savedState && savedState.date == config().currentDate) {
+                console.log({ savedState });
+                refs.counter = savedState.counter;
+                refs.batchNum = savedState.batchNum;
+                //refs.secondsElapsed = savedState.elapsed;
             }
 
-            init(initCards);
-            refs.initialized = true;
-        }, [init, initCards, refs]);
+            setCards(initCards);
 
-        useEffect(() => {
-            function onFocus() {
-                refs.timer = window.setInterval(() => {
-                    refs.secondsElapsed++;
-                }, 1000);
-            }
-            function onBlur() {
-                clearInterval(refs.timer);
+            const { item: card, nextCounter } = ShortAlternating.nextDue(
+                refs.counter,
+                refs.batchSize,
+                initCards,
+            );
+            if (card) {
+                setCardID(card.id);
             }
 
-            onFocus();
-            window.addEventListener("focus", onFocus);
-            window.addEventListener("blur", onBlur);
-            return () => {
-                window.removeEventListener("focus", onFocus);
-                window.removeEventListener("blur", onBlur);
-            };
-        }, [refs]);
+            refs.counter = nextCounter;
+            refs.batchSize = Math.min(refs.batchSize, initCards.length);
+        };
+
+        useOnMount(initialize);
+
+        useInterval(1000, () => {
+            if (document.hasFocus()) {
+                refs.secondsElapsed++;
+            }
+        });
+
+        {
+            const newOptions = GrindSettings$.Options.current;
+            if (useChanged(newOptions)) {
+                setOptions(newOptions);
+                refs.studyBatchDuration = newOptions.studyBatchDuration;
+                refs.breakTimeDuration = newOptions.breakTimeDuration;
+            }
+        }
 
         const currentCard = OrderedSet.get(cards, cardID);
         let body = <div />;
@@ -257,7 +240,7 @@ namespace _GrindStudySession {
                     {breakTime && (
                         <TabOutDistraction
                             card={currentCard}
-                            seconds={refs.breakTimeDuration}
+                            seconds={refs.breakTimeDuration * 60}
                             onReturn={onReturn}
                         />
                     )}
@@ -278,13 +261,15 @@ namespace _GrindStudySession {
             );
         }
 
-        // TODO:
-        if (config().currentDate !== currentDate()) {
-            throw "nope";
-        }
-
         return (
             <div>
+                <small style={{ textAlign: "center" }}>
+                    study time: {refs.studyBatchDuration.toFixed(2)}
+                    <Space />
+                    |
+                    <Space />
+                    break time: {refs.breakTimeDuration.toFixed(2)}
+                </small>
                 <Container isLoading={loading} ref={containerRef}>
                     <Flex>
                         <Buttons>
@@ -311,7 +296,7 @@ namespace _GrindStudySession {
                             >
                                 <Icon slot="prefix" name="pencil-square" /> Notes
                             </Button>
-                            <Button>
+                            <Button onClick={() => actions.showGrindSettings()}>
                                 <Icon slot="prefix" name="gear" /> Settings
                             </Button>
                         </Buttons>
@@ -323,7 +308,8 @@ namespace _GrindStudySession {
                         onEdit={onEditCard}
                         onClose={() => setShowActions(false)}
                     />
-                    <Flipper ref={onMountFlipper} rate={1.5}>
+                    <br />
+                    <Flipper ref={flipper} rate={1.5}>
                         {body}
                     </Flipper>
                 </Container>
@@ -332,7 +318,7 @@ namespace _GrindStudySession {
     }
     const Buttons = styled(ButtonGroup)`
         display: flex;
-        justify-content: center;
+        justify-content: start;
         width: 100%;
     `;
 
@@ -357,6 +343,7 @@ namespace _GrindStudySession {
 
     type CardStatsMap = Record<number, main.CardStats | undefined>;
 
+    /*
     function getCardStats(cards: Card[]) {
         return cards.reduce((result, card) => {
             result[card.id] = {
@@ -371,7 +358,60 @@ namespace _GrindStudySession {
             return result;
         }, {} as CardStatsMap);
     }
+    */
 
+    namespace PersistentState {
+        export const schema = z.object({
+            date: z.number(),
+            counter: z.number(),
+            batchNum: z.number(),
+            elapsed: z.number(),
+        });
+        type T = z.infer<typeof schema>;
+        const defaultVal: T = {
+            date: config().currentDate,
+            counter: 0,
+            batchNum: 0,
+            elapsed: 0,
+        };
+        const lsKey = "grind-session-state";
+        export function load(): T | null {
+            return parseZodFromLocalStorage(schema, lsKey);
+        }
+        export function save(state: T) {
+            localStorage.setItem(lsKey, JSON.stringify(state));
+        }
+    }
+
+    /*
+    namespace SessionState {
+        const statsSchema = z.object({
+            interval: z.number(),
+            proficiency: z.number(),
+            numRecall: z.number(),
+            numForget: z.number(),
+            consecRecall: z.number(),
+            consecForget: z.number(),
+            lastUpdate: z.number(),
+        });
+        export const schema = z.object({
+            date: z.number(),
+            counter: z.number(),
+            elapsed: z.number(),
+            cardStatsMap: z.record(z.number(), statsSchema),
+        });
+        type T = z.infer<typeof schema>;
+        const defaultVal: T = {
+            date: config().currentDate,
+            counter: 0,
+            elapsed: 0,
+            cardStatsMap: {},
+        };
+        const typeCheck: Record<number, main.CardStats> = defaultVal.cardStatsMap;
+    }
+
+    // wait, I don't think I'm even using this anymore since
+    // I persisted the state now on the db?
     namespace SerializedState {
         export const defaultState = () => ({
             date: config().currentDate,
@@ -403,13 +443,20 @@ namespace _GrindStudySession {
             serializer.save(state);
         }
     }
+    */
 
-    async function studyCard(card: Card, trial: FactorTrial, recalled: boolean) {
+    async function studyCard(counter: number, card: Card, trial: FactorTrial, recalled: boolean) {
         card = ShortAlternating.studyCard(card, trial, recalled);
         card.lastUpdate = Math.floor(Date.now() / 1000);
+        card.counter = counter;
         await app.PersistCardStats(card);
 
         return card;
+    }
+
+    function blah(phase: number, x: number, size: number) {
+        const x_ = x + Math.sin(phase / size / 2) * size * 2;
+        return Math.max(x_, 1);
     }
 }
 
@@ -453,11 +500,11 @@ export namespace CardActions$ {
                 >
                     <Block>
                         <Button onClick={onRemove}>Remove</Button>
-                        <br />
+                        <Space />
                         Remove card from today's study. This will not delete the card.
                         <Divider />
                         <Button onClick={onEdit}>Edit</Button>
-                        <br />
+                        <Space />
                         Edit the card file.
                     </Block>
                 </Drawer>

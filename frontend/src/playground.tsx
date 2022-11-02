@@ -95,6 +95,7 @@ export namespace Playground$ {
         const [showAdded, setShowAdded] = useState(false);
 
         const [collapseTabs, setCollapseTabs] = useState(false);
+        const [actions] = useAtom(appState.actions);
         const [allUserCards] = useAtom(appState.allUserCards);
         const [drillCards] = useAtom(appState.drillCards);
 
@@ -118,11 +119,7 @@ export namespace Playground$ {
         }
 
         function onStart() {
-            app.CreateStudySession(
-                config().defaultStudyName,
-                config().studySessionTypes.normal,
-                drillCards.map((c) => c.path),
-            );
+            actions.saveCards(drillCards);
             onSubmit();
         }
 
@@ -852,6 +849,7 @@ export namespace SelectedCards$ {
         onSubmit: Action;
     }
     export function View({ onSubmit }: Props) {
+        const [actions] = useAtom(appState.actions);
         const [allUserCards] = useAtom(appState.allUserCards);
         const [cards, setCards] = useAtom(appState.drillCards);
         const [editing, setEdit] = useState(false);
@@ -873,11 +871,7 @@ export namespace SelectedCards$ {
                 const cards = allUserCards.filter((c) => set.has(c.path)).map((c) => Card.parse(c));
                 setCards(cards);
                 setLines(lines);
-                await app.CreateStudySession(
-                    config().defaultStudyName,
-                    config().studySessionTypes.normal,
-                    cards.map((c) => c.path),
-                );
+                actions.saveCards(cards);
             }
 
             setEdit(edit);

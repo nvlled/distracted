@@ -14,7 +14,7 @@ import { useAtom } from "jotai";
 import { AppDrawerOptions, appState, ToastOptions } from "./state";
 import { Card } from "./card";
 import styled from "styled-components";
-import { Action, MainPages, sleep, useInterval, waitEvent } from "./lib";
+import { Action, deferInvoke, MainPages, sleep, tryJSONParse, useInterval, waitEvent } from "./lib";
 import { config, setConfig } from "./config";
 
 import { cardEvents } from "./api";
@@ -27,11 +27,23 @@ import "@shoelace-style/shoelace/dist/themes/dark.css";
 
 import { Playground } from "./playground";
 import { GrindStudySession } from "./SessionDrill";
-import { AnimatedImageRef, Animation, AnimationRef, Button, CardBox, Drawer } from "./shoelace";
+import {
+    AnimatedImageRef,
+    Animation,
+    AnimationRef,
+    Button,
+    CardBox,
+    Checkbox,
+    Drawer,
+    EventUtil,
+    Range,
+    Shoe,
+} from "./shoelace";
 import { SlAnimation } from "@shoelace-style/shoelace/dist/react";
 import { Ap2 } from "./AudioPlayer";
 import { Space } from "./components";
 import { useOnMount, useOnUnmount, useSomeChanged, useChanged } from "./hooks";
+import { z } from "zod";
 // web server path? or filesystem path?
 //setBasePath("../public/");
 
@@ -148,7 +160,7 @@ function App() {
         appInitialized = true;
         console.log("app init");
 
-        setActions({
+        const appActions = {
             changePage: (name: MainPages) => {
                 setMainPage(name);
             },
@@ -174,7 +186,24 @@ function App() {
             removeDrillCard(cardID: number) {
                 setDrillCards((cards) => cards.filter((c) => c.id !== cardID));
             },
-        });
+            showGrindSettings() {
+                this.setDrawer(
+                    {
+                        keepOpen: true,
+                        title: "Study session settings",
+                    },
+                    <GrindSettings />,
+                );
+            },
+            saveCards: deferInvoke(5000, (cards: Card[]) => {
+                app.CreateStudySession(
+                    config().defaultStudyName,
+                    config().studySessionTypes.normal,
+                    cards.map((c) => c.path),
+                );
+            }),
+        };
+        setActions(appActions);
 
         async function init() {
             const [userData, decks, allUserCards, cardIDs] = await Promise.all([
@@ -184,15 +213,12 @@ function App() {
                 app.GetDailyStudyCardIds(),
             ]);
 
-            //setConfig(globalConfig);
             setUserData(userData);
             setDecks(decks);
             setAllUserCards(allUserCards);
 
             const idSet = new Set(cardIDs);
             setDrillCards(allUserCards.filter((c) => idSet.has(c.id)).map((c) => Card.parse(c)));
-
-            console.log(allUserCards.length);
 
             setInitialized(true);
 
@@ -370,6 +396,7 @@ export namespace Flipper$ {
 }
 export const Flipper = Flipper$.View;
 
+/*
 export namespace TestPrevState$ {
     export interface Props {}
     export function View({}: Props) {
@@ -392,14 +419,12 @@ export namespace TestPrevState$ {
             console.log("unmount", { count });
         });
 
-        /*
-        const updateMsg = useInterval(1000);
-        if (updateMsg) {
-            setCount(count + 1);
-            setMsg(`${Date.now()}`);
-            console.log("okay, but why doesn't this work?");
-        }
-        */
+        //const updateMsg = useInterval(1000);
+        //if (updateMsg) {
+        //    setCount(count + 1);
+        //    setMsg(`${Date.now()}`);
+        //    console.log("okay, but why doesn't this work?");
+        //}
 
         return (
             <Container>
@@ -423,24 +448,128 @@ export namespace TestPrevState$ {
     }
     const Container = styled.div``;
 
-    /*
-    function useInterval(millis: number) {
-        const [, setLastUpdate] = useState(0);
-        const ref = useRef(false);
+    //function useInterval(millis: number) {
+    //    const [, setLastUpdate] = useState(0);
+    //    const ref = useRef(false);
 
-        useEffect(() => {
-            let timerID = setInterval(() => {
-                ref.current = true;
-                setLastUpdate(Date.now());
-            }, millis);
-            return () => clearInterval(timerID);
-        }, []);
+    //    useEffect(() => {
+    //        let timerID = setInterval(() => {
+    //            ref.current = true;
+    //            setLastUpdate(Date.now());
+    //        }, millis);
+    //        return () => clearInterval(timerID);
+    //    }, []);
 
-        const shouldRun = ref.current;
-        ref.current = false;
+    //    const shouldRun = ref.current;
+    //    ref.current = false;
 
-        return shouldRun;
-    }
-    */
+    //    return shouldRun;
+    //}
 }
 export const TestPrevState = TestPrevState$.View;
+*/
+
+export namespace GrindSettings$ {
+    export interface Props {}
+    export function View({}: Props) {
+        const [options, setOptions] = useState(Options.defaultOptions);
+
+        function update(newOptions: Options.T) {
+            setOptions(newOptions);
+            Options.save(newOptions);
+        }
+
+        useOnMount(() => {
+            setOptions(Options.load());
+        });
+
+        return (
+            <Container>
+                <label>
+                    study batch duration:
+                    <Space />
+                    {options.studyBatchDuration}
+                    <Range
+                        onSlChange={(e) => {
+                            const val: number = EventUtil.value(e) ?? options.studyBatchDuration;
+                            update({ ...options, studyBatchDuration: val });
+                        }}
+                        min={Options.studyMinutes.min}
+                        max={Options.studyMinutes.max}
+                        value={options.studyBatchDuration}
+                        tooltipFormatter={(value) => `${value} minutes`}
+                    />
+                </label>
+                <br />
+                <label>
+                    break-time duration:
+                    <Space />
+                    {options.breakTimeDuration}
+                    <Range
+                        onSlChange={(e) => {
+                            const val: number = EventUtil.value(e) ?? options.breakTimeDuration;
+                            update({ ...options, breakTimeDuration: val });
+                        }}
+                        min={Options.breakMinutes.min}
+                        max={Options.breakMinutes.max}
+                        value={options.breakTimeDuration}
+                        tooltipFormatter={(value) => `${value} minutes`}
+                    />
+                </label>
+                <br />
+                <label>
+                    <Checkbox
+                        checked={options.autoAdjust}
+                        onSlChange={(e) => {
+                            const checked = EventUtil.isChecked(e);
+                            update({ ...options, autoAdjust: checked });
+                        }}
+                    >
+                        auto-adjust duration
+                    </Checkbox>
+                    <br />
+                    The break time and study batch time will increase or decrease automatically.
+                    This is to add randomness and variation to the spacing.
+                </label>
+            </Container>
+        );
+    }
+    const Container = styled.div`
+        padding: ${Shoe.spacing_small};
+    `;
+
+    export namespace Options {
+        export const studyMinutes = { min: 1, max: 60, default: 5 };
+        export const breakMinutes = { min: 1, max: 60, default: 2 };
+
+        const schema = z.object({
+            studyBatchDuration: z.number(),
+            breakTimeDuration: z.number(),
+            autoAdjust: z.boolean(),
+        });
+        export type T = z.infer<typeof schema>;
+
+        export const defaultOptions: T = {
+            studyBatchDuration: studyMinutes.default,
+            breakTimeDuration: breakMinutes.default,
+            autoAdjust: true,
+        };
+
+        const lsKey = "grind-options";
+        export function load() {
+            const res = schema.safeParse(tryJSONParse(localStorage.getItem(lsKey) ?? ""));
+            if (!res.success) {
+                return { ...defaultOptions };
+            }
+            return res.data;
+        }
+        export function save(options: T) {
+            localStorage.setItem(lsKey, JSON.stringify(options));
+            current = options;
+        }
+        export let current = load();
+
+        function onChange(fn: Action) {}
+    }
+}
+export const GrindSettings = GrindSettings$.View;

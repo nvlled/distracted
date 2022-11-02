@@ -68,6 +68,7 @@ type CardRow struct {
 	ConsecForget   int   `db:"consecForget"`
 	LastUpdate     int64 `db:"lastUpdate"`
 	LastRecallDate int64 `db:"lastRecallDate"`
+	Counter        int64 `json:"counter"`
 }
 
 type CardStats struct {
@@ -78,6 +79,7 @@ type CardStats struct {
 	ConsecRecall int   `json:"consecRecall"`
 	ConsecForget int   `json:"consecForget"`
 	LastUpdate   int64 `json:"lastUpdate"`
+	Counter      int64 `json:"counter"`
 }
 
 type CardData struct {

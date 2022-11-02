@@ -346,7 +346,7 @@ export namespace _ProficiencyTrial {
         }
 
         return (
-            <Container>
+            <Container presented={presented}>
                 {/*card.audios.map((src) => (
                     <DeckAudioVolume key={src} src={src} />
                 ))*/}
@@ -381,7 +381,7 @@ export namespace _ProficiencyTrial {
         );
     }
 
-    const Container = styled.div`
+    const Container = styled.div<{ presented: FactorID }>`
         > .buttons {
             display: flex;
             flex-direction: column;
@@ -408,7 +408,7 @@ export namespace _ProficiencyTrial {
                 justify-content: center;
             }
             .presented {
-                font-size: 2ch;
+                font-size: ${(props) => (props.presented === "text" ? "3ch" : "2ch")};
             }
             .tested {
                 font-size: 2ch;
@@ -1325,13 +1325,23 @@ namespace WordSearch$ {
         }
 
         const lines: TextBlockItem[] = [];
-        const lineNum = Math.floor(midWeightedRandom() * height);
+
+        const correctLineNums = new Set<number>();
+        for (let i = 0; i < height / 2; i++) {
+            correctLineNums.add(Math.floor(midWeightedRandom() * height));
+        }
+        const shuffled: string[] = [];
+        for (let i = 0; i < height; i++) {
+            const t = shuffleString(text);
+            shuffled.push(t === text ? randomText(chars, text.length) : t);
+        }
+
         for (let n = 0; n < height; n++) {
             const colNum = Math.floor(Math.random() * (width - text.length + 1));
-            const correct = n === lineNum;
+            const correct = correctLineNums.has(n);
             lines.push(
                 blockItem(randomText(chars, colNum)),
-                blockItem(correct ? text : shuffleString(text), correct),
+                blockItem(correct ? text : shuffled[n], correct),
                 blockItem(randomText(chars, width - text.length - colNum)),
                 blockItem("\n"),
             );
