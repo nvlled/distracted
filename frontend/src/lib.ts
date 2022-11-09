@@ -80,6 +80,10 @@ export function shuffle<T>(xs: T[]): T[] {
     return xs;
 }
 
+export function randomIndex(xs: unknown[]): number {
+    return Math.floor(Math.random() * xs.length);
+}
+
 export function randomElem<T>(xs: T[]): T | undefined {
     const i = Math.floor(Math.random() * xs.length);
     return xs[i];
@@ -222,6 +226,7 @@ export function isSymbol(s: string) {
     switch (s) {
         case "`":
         case "~":
+        case "×":
         case "!":
         case "@":
         case "#":

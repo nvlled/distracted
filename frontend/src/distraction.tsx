@@ -1,16 +1,19 @@
-export {};
-
+import { useAtom } from "jotai";
 import React, { memo, useCallback, useRef, useState } from "react";
 import styled from "styled-components";
 import { app } from "./api";
 import { Card } from "./card";
 import { useOnMount, useOnUnmount } from "./hooks";
 import { Action, formatDuration, useAsyncEffectUnmount, useInterval } from "./lib";
+import { CardActions } from "./SessionDrill";
+import { Button } from "./shoelace";
+import { appState } from "./state";
 
 export namespace _TabOutDistraction {
     export const Container = styled.div``;
 
     export function View({ onReturn, seconds }: { onReturn: Action; seconds: number }) {
+        const [actions] = useAtom(appState.actions);
         const [countdown, setCountdown] = useState(seconds);
         const timerRef = useRef<number | undefined>();
         const notifierID = useRef<number | undefined>();
@@ -26,6 +29,9 @@ export namespace _TabOutDistraction {
         function onTryReturn() {
             stopNotifier();
             onReturn();
+        }
+        function onQuit() {
+            actions.changePage("home");
         }
 
         useOnMount(async () => {
@@ -51,10 +57,19 @@ export namespace _TabOutDistraction {
                 {countdown <= 0 ? (
                     <div>
                         Break time&apos;s over.
-                        <button onClick={onTryReturn}>noooooo11!!!12</button>
+                        <Button onClick={onTryReturn} variant="primary">
+                            continue
+                        </Button>
                     </div>
                 ) : (
-                    <div>Chill time. You have {formatDuration(seconds)} of break time.</div>
+                    <div>
+                        Chill time. You have {formatDuration(seconds)} of break time.
+                        <br />
+                        Or you can stop the current session right now, and maybe come later, or
+                        tomorrow.
+                        <Button onClick={onQuit}>stop for now</Button>
+                        <br />
+                    </div>
                 )}
             </Container>
         );

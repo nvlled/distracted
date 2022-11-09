@@ -17,13 +17,16 @@ import {
     LocalStorageSerializer,
     randomColor,
     randomElem,
+    randomIndex,
     range,
     shuffle,
+    sleep,
     useCardWatch,
 } from "./lib";
 import { Ap2, Ap2$, AudioPlayer } from "./AudioPlayer";
 import { CardView } from "./CardView";
 import { Button, Divider, Shoe } from "./shoelace";
+import { Keybind } from "./components";
 
 /*
 
@@ -220,11 +223,15 @@ export namespace _ProficiencyTrial {
         const presentedAudio = useRef<Ap2$.Control>(null);
         const testedAudio = useRef<Ap2$.Control>(null);
 
+        const actionButtonRef = useRef<HTMLDivElement | null>(null);
+
         const { tested, presented } = trial;
 
         function onSubmitTest() {
             setState("prompt");
-            DeckAudio.playFirst(card);
+            if (tested === "sound") {
+                DeckAudio.playFirst(card);
+            }
         }
 
         function onContinue() {
@@ -236,6 +243,11 @@ export namespace _ProficiencyTrial {
         }
 
         async function onSubmitAnswer(recalled: boolean) {
+            (async () => {
+                await sleep(100);
+                actionButtonRef.current?.scrollIntoView({ behavior: "smooth" });
+            })();
+
             setState("review");
             setAudioPlaying(true);
             await DeckAudio.play(card);
@@ -261,11 +273,10 @@ export namespace _ProficiencyTrial {
             setTestNoise(noise);
             setTrial(trial);
 
-            if (trial.presented === "sound") {
-                console.log("play", card.factorData.sound);
-                //presentedAudio.current?.play();
-                //DeckAudio.play(card.factorData.sound ?? "");
-            }
+            //if (trial.presented === "sound") {
+            //presentedAudio.current?.play();
+            //DeckAudio.play(card.factorData.sound ?? "");
+            //}
         }, [card]);
 
         if (trial.observation) {
@@ -285,21 +296,37 @@ export namespace _ProficiencyTrial {
 
         const actionButton =
             state === "test" ? (
-                <Button onClick={onSubmitTest}>show</Button>
+                <Keybind keyName="Enter" otherKeys={[{ name: "ArrowDown" }]}>
+                    <Button onClick={onSubmitTest}>show</Button>
+                </Keybind>
             ) : state === "prompt" ? (
                 <>
                     <Flex cmr={Shoe.spacing_small}>
-                        <Button variant="danger" size="large" onClick={() => onSubmitAnswer(false)}>
-                            no
-                        </Button>
+                        <Keybind keyName="ArrowLeft">
+                            <Button
+                                variant="danger"
+                                size="large"
+                                onClick={() => onSubmitAnswer(false)}
+                            >
+                                no
+                            </Button>
+                        </Keybind>
                         <div>do you remember?</div>
-                        <Button variant="success" size="large" onClick={() => onSubmitAnswer(true)}>
-                            yes
-                        </Button>
+                        <Keybind keyName="ArrowRight">
+                            <Button
+                                variant="success"
+                                size="large"
+                                onClick={() => onSubmitAnswer(true)}
+                            >
+                                yes
+                            </Button>
+                        </Keybind>
                     </Flex>
                 </>
             ) : (
-                <Button onClick={onContinue}>continue</Button>
+                <Keybind keyName="Enter" otherKeys={[{ name: "ArrowDown" }]}>
+                    <Button onClick={onContinue}>continue</Button>
+                </Keybind>
             );
 
         let presentedContent = <></>;
@@ -307,16 +334,18 @@ export namespace _ProficiencyTrial {
             presentedContent = <>{card.factorData[presented]}</>;
         } else if (presented === "sound") {
             presentedContent = (
-                <Ap2
-                    key={card.factorData.sound ?? "presented-audio"}
-                    //ref={presentedAudio}
-                    ref={(ref) => {
-                        if (trial.presented === "sound" && state === "test") {
-                            ref?.play();
-                        }
-                    }}
-                    src={card.factorData["sound"] ?? ""}
-                />
+                <Keybind keyName=" ">
+                    <Ap2
+                        key={card.factorData.sound ?? "presented-audio"}
+                        //ref={presentedAudio}
+                        ref={(ref) => {
+                            if (trial.presented === "sound" && state === "test") {
+                                ref?.play();
+                            }
+                        }}
+                        src={card.factorData["sound"] ?? ""}
+                    />
+                </Keybind>
             );
         }
 
@@ -336,11 +365,13 @@ export namespace _ProficiencyTrial {
                 testedContent = <>{card.factorData[tested]}</>;
             } else if (tested === "sound") {
                 testedContent = (
-                    <Ap2
-                        key={card.factorData.sound ?? "tested-audio"}
-                        ref={testedAudio}
-                        src={card.factorData["sound"] ?? ""}
-                    />
+                    <Keybind keyName=" ">
+                        <Ap2
+                            key={card.factorData.sound ?? "tested-audio"}
+                            ref={testedAudio}
+                            src={card.factorData["sound"] ?? ""}
+                        />
+                    </Keybind>
                 );
             }
         }
@@ -377,6 +408,7 @@ export namespace _ProficiencyTrial {
                 ) : (
                     <div className="buttons">{actionButton}</div>
                 )}
+                <div ref={actionButtonRef} />
             </Container>
         );
     }
@@ -487,7 +519,6 @@ export namespace ColorizeChar$ {
             //}
             function onMountFrontCanvas(canvas: HTMLCanvasElement) {
                 if (!canvas) return;
-                console.log("onMountCanvas");
                 refs.canvas = canvas;
                 refs.ctx = canvas.getContext("2d");
             }
@@ -1288,7 +1319,7 @@ namespace WordSearch$ {
     `;
 
     const minWidth = 15;
-    const height = 4;
+    const height = 5;
 
     type TextBlockItem = { text: string; answer: boolean };
     function blockItem(text: string, answer = false) {
@@ -1330,11 +1361,13 @@ namespace WordSearch$ {
         for (let i = 0; i < height / 2; i++) {
             correctLineNums.add(Math.floor(midWeightedRandom() * height));
         }
-        const shuffled: string[] = [];
-        for (let i = 0; i < height; i++) {
+        let shuffled: string[] = [];
+        shuffled.push(replaceOne(text, randomText(chars, 1)));
+        for (let i = 1; i < height; i++) {
             const t = shuffleString(text);
             shuffled.push(t === text ? randomText(chars, text.length) : t);
         }
+        shuffled = shuffle(shuffled);
 
         for (let n = 0; n < height; n++) {
             const colNum = Math.floor(Math.random() * (width - text.length + 1));
@@ -1347,6 +1380,12 @@ namespace WordSearch$ {
             );
         }
         return lines;
+    }
+
+    function replaceOne(text: string, ch: string) {
+        const cs = text.split("");
+        cs[randomIndex(cs)] = ch;
+        return cs.join("");
     }
 }
 export const WordSearch = WordSearch$.View;

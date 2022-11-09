@@ -247,7 +247,11 @@ export namespace Ap2$ {
         }
 
         return (
-            <Container>
+            <Container
+                onClick={() => {
+                    onPlay();
+                }}
+            >
                 <Dialog
                     label="sound settings"
                     open={showSettings}

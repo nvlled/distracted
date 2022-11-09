@@ -1,8 +1,10 @@
 import { atom } from "jotai";
 import { ReactNode } from "react";
 import { main } from "../wailsjs/go/models";
+import { GrindSettings$ } from "./App";
 import { Card } from "./card";
 import { MainPages, nop } from "./lib";
+import { CardSort } from "./playground";
 
 export interface AppDrawerOptions {
     title?: string;
@@ -19,9 +21,10 @@ const actions = {
     changePage: (name: MainPages) => {},
     toggleNotes: nop,
     setDrawer: (options: AppDrawerOptions, content: ReactNode) => {},
-    showGrindSettings: () => {},
+    showGrindSettings: (_: (options: GrindSettings$.Options.T) => void) => {},
     toastInfo: (message: string, options?: ToastOptions) => {},
     removeDrillCard: (cardID: number) => {},
+    updateDrillCard: (card: Card) => {},
     saveCards: (cards: Card[]) => {},
 };
 export type AppActions = typeof actions;
@@ -33,6 +36,7 @@ export const appState = {
     mainPage: atom("home" as MainPages),
 
     drillCards: atom([] as Card[]),
+    drillSort: atom({ type: "added", desc: false } as CardSort.Sort),
 
     allUserCards: atom([] as main.CardData[]),
 
@@ -48,4 +52,6 @@ export const appState = {
     distractionMode: atom(false),
 
     actions: atom(actions as AppActions),
+
+    showKeybindings: atom(true),
 };

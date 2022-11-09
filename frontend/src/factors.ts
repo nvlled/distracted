@@ -158,6 +158,10 @@ export const Factors = {
     getWeakestFactor(proficiency: ProficiencyArg): FactorID {
         const factors = Factors.get(proficiency);
         const min = Factors.getMinFactorValue(factors);
+        const max = Factors.getMaxFactorValue(factors);
+        if (min === max) {
+            return Factors.getRandom(factors);
+        }
         for (const [key, val] of Object.entries(factors)) {
             if (val === min) return key as FactorID;
         }

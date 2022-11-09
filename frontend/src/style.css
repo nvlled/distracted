@@ -22,4 +22,16 @@ strong {
 
 body {
     /*font-size: 250%;*/
+    margin-top: 0 !important;
+    max-width: 800px;
+    margin: 0 auto;
+    border: 1px solid #222;
+    overflow-x: hidden;
+}
+
+a {
+    color: var(--sl-color-primary-600);
+}
+a:visited { 
+    color: var(--sl-color-primary-700);
 }

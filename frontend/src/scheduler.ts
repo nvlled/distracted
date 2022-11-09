@@ -36,10 +36,10 @@ export namespace ShortAlternating {
             }
         }
 
-        allDueItems.sort(orderByIntervalDesc);
-        console.log(items.map((c) => c.interval));
+        //allDueItems.sort(orderByIntervalDesc);
 
-        const item = randomElem(allDueItems.slice(0, batchSize));
+        //const item = randomElem(allDueItems.slice(0, batchSize));
+        const item = allDueItems[0];
         if (item) {
             return { item: item, nextCounter };
         }
@@ -56,6 +56,7 @@ export namespace ShortAlternating {
 
     export function studyCard<T extends Item>(card: T, trial: FactorTrial, recalled: boolean) {
         card = { ...card };
+        const pow = 1.8;
         if (recalled) {
             card.numRecall++;
             card.consecRecall++;
@@ -69,14 +70,14 @@ export namespace ShortAlternating {
             console.log("next proficiency", Factors.get(card.proficiency));
             console.log("prev interval", card.interval);
             card.interval += Math.floor(
-                1 + Math.floor(card.consecRecall * Factors.getAverage(card.proficiency)) ** 2,
+                1 + Math.floor(card.consecRecall * Factors.getAverage(card.proficiency)) ** pow,
             );
             console.log("next interval", card.interval);
         } else {
             card.numForget++;
             card.consecForget++;
             card.consecRecall = 0;
-            card.interval -= Math.floor(1 + (card.consecForget - 1) / 2) ** 2;
+            card.interval -= Math.floor(1 + (card.consecForget - 1) / 2) ** pow;
         }
 
         if (card.interval < 0) {

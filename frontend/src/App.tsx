@@ -13,8 +13,18 @@ import * as runtime from "../wailsjs/runtime";
 import { useAtom } from "jotai";
 import { AppDrawerOptions, appState, ToastOptions } from "./state";
 import { Card } from "./card";
-import styled from "styled-components";
-import { Action, deferInvoke, MainPages, sleep, tryJSONParse, useInterval, waitEvent } from "./lib";
+import styled, { keyframes } from "styled-components";
+import {
+    Action,
+    Action1,
+    deferInvoke,
+    hasProp,
+    MainPages,
+    sleep,
+    tryJSONParse,
+    useInterval,
+    waitEvent,
+} from "./lib";
 import { config, setConfig } from "./config";
 
 import { cardEvents } from "./api";
@@ -22,22 +32,27 @@ import { Flex, lt } from "./layout";
 
 import "./App.css";
 import "./style.css";
-import "./water-dark.css";
+//import "./water-dark.css";
 import "@shoelace-style/shoelace/dist/themes/dark.css";
 
-import { Playground } from "./playground";
+import { CardSort, Playground } from "./playground";
 import { GrindStudySession } from "./SessionDrill";
 import {
     AnimatedImageRef,
     Animation,
     AnimationRef,
     Button,
+    ButtonGroup,
     CardBox,
     Checkbox,
     Drawer,
     EventUtil,
+    Icon,
+    IconButton,
+    Popup,
     Range,
     Shoe,
+    Tooltip,
 } from "./shoelace";
 import { SlAnimation } from "@shoelace-style/shoelace/dist/react";
 import { Ap2 } from "./AudioPlayer";
@@ -144,8 +159,10 @@ function App() {
     const [, setUserData] = useAtom(appState.userData);
     const [, setAllUserCards] = useAtom(appState.allUserCards);
     const [drillCards, setDrillCards] = useAtom(appState.drillCards);
+    const [drillSort, setDrillSort] = useAtom(appState.drillSort);
     const [mainPage, setMainPage] = useAtom(appState.mainPage);
     const [initialized, setInitialized] = useState(false);
+    const [sortedCards, setSortedCards] = useState<Card[]>([]);
 
     const [drawerContent, setDrawerContent] = useState<ReactNode | null>(null);
     const [drawerOptions, setDrawerOptions] = useState<AppDrawerOptions | null>(null);
@@ -186,13 +203,16 @@ function App() {
             removeDrillCard(cardID: number) {
                 setDrillCards((cards) => cards.filter((c) => c.id !== cardID));
             },
-            showGrindSettings() {
+            updateDrillCard(card: Card) {
+                setDrillCards((cards) => cards.map((c) => (c.id !== card.id ? c : card)));
+            },
+            showGrindSettings(onSave: (_: GrindSettings$.Options.T) => void) {
                 this.setDrawer(
                     {
                         keepOpen: true,
                         title: "Study session settings",
                     },
-                    <GrindSettings />,
+                    <GrindSettings onSave={onSave} />,
                 );
             },
             saveCards: deferInvoke(5000, (cards: Card[]) => {
@@ -219,6 +239,7 @@ function App() {
 
             const idSet = new Set(cardIDs);
             setDrillCards(allUserCards.filter((c) => idSet.has(c.id)).map((c) => Card.parse(c)));
+            setDrillSort(CardSort.loadDrillSort());
 
             setInitialized(true);
 
@@ -228,8 +249,6 @@ function App() {
                 }
                 const cardData = await app.GetCard(data);
                 const card = Card.parse(cardData);
-                console.log("card-file-updated");
-                cardEvents.emit(card);
                 setDrillCards((cards) => cards.map((c) => (c.id !== card.id ? c : card)));
                 setAllUserCards((cards) => cards.map((c) => (c.id !== card.id ? c : cardData)));
             });
@@ -253,6 +272,10 @@ function App() {
         //};
     }, []);
 
+    if (useSomeChanged(drillSort.type, drillSort.desc)) {
+        CardSort.saveDrillSort(drillSort);
+    }
+
     useInterval(30 * 60 * 1000, async () => {
         const config = await app.GetConfig();
         setConfig(config);
@@ -260,6 +283,7 @@ function App() {
 
     return (
         <AppContainer id="App">
+            <ToggleKeybindInfo />
             {drawerContent && (
                 <DrawerContainer width={drawerOptions?.width}>
                     <Drawer
@@ -299,7 +323,7 @@ function App() {
             mainPage == "drill" ? (
                 <GrindStudySession
                     sessionName={config().defaultStudyName}
-                    initCards={drillCards}
+                    initCards={sortedCards}
                     onQuit={() => setMainPage("home")}
                     //onAddMoreCards={() => {
                     //    setEditDailies(true);
@@ -307,7 +331,12 @@ function App() {
                     //}}
                 />
             ) : mainPage == "home" ? (
-                <Playground onSubmit={() => setMainPage("drill")} />
+                <Playground
+                    onSubmit={() => {
+                        setSortedCards(CardSort.sort(drillSort.type, drillSort.desc, drillCards));
+                        setMainPage("drill");
+                    }}
+                />
             ) : (
                 <div>unknown page</div>
             )}
@@ -340,9 +369,11 @@ export namespace Flipper$ {
     export interface Props {
         children: ReactNode;
         rate?: number;
+        outAnimation?: string;
+        inAnimation?: string;
     }
     export const View = forwardRef(function (
-        { rate, children }: Props,
+        { rate, children, outAnimation = "backOutLeft", inAnimation = "backInRight" }: Props,
         ref: ForwardedRef<Control>,
     ) {
         const animRef = useRef<AnimationRef | null>(null);
@@ -364,7 +395,7 @@ export namespace Flipper$ {
                 flipOut: async () => {
                     const anim = animRef.current;
                     if (!anim) return;
-                    anim.name = "backOutLeft";
+                    anim.name = outAnimation;
                     anim.play = true;
                     await waitEvent(anim, "sl-finish");
                     anim.style.visibility = "hidden";
@@ -373,7 +404,7 @@ export namespace Flipper$ {
                     const anim = animRef.current;
                     if (!anim) return;
                     anim.style.visibility = "visible";
-                    anim.name = "backInRight";
+                    anim.name = inAnimation;
                     anim.play = true;
                     await waitEvent(anim, "sl-finish");
                 },
@@ -395,6 +426,29 @@ export namespace Flipper$ {
     const Container = styled.div``;
 }
 export const Flipper = Flipper$.View;
+
+export namespace ToggleKeybindInfo$ {
+    export interface Props {}
+    export function View({}: Props) {
+        const [show, setShow] = useAtom(appState.showKeybindings);
+        return (
+            <Container active={show}>
+                <Tooltip content="show key shortcuts" placement="right">
+                    <IconButton name="keyboard" onClick={() => setShow(!show)} />
+                </Tooltip>
+            </Container>
+        );
+    }
+    const Container = styled.div<{ active: boolean }>`
+        position: absolute;
+        top: 0;
+        left: 0;
+        sl-icon-button::part(base) {
+            color: ${(props) => (props.active ? Shoe.color_success_600 : Shoe.color_neutral_500)};
+        }
+    `;
+}
+export const ToggleKeybindInfo = ToggleKeybindInfo$.View;
 
 /*
 export namespace TestPrevState$ {
@@ -470,13 +524,16 @@ export const TestPrevState = TestPrevState$.View;
 */
 
 export namespace GrindSettings$ {
-    export interface Props {}
-    export function View({}: Props) {
+    export interface Props {
+        onSave?: Action1<GrindSettings$.Options.T>;
+    }
+    export function View({ onSave }: Props) {
         const [options, setOptions] = useState(Options.defaultOptions);
 
         function update(newOptions: Options.T) {
             setOptions(newOptions);
             Options.save(newOptions);
+            onSave?.(newOptions);
         }
 
         useOnMount(() => {

@@ -531,16 +531,16 @@ func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, erro
 		ID   int64  `db:"id"`
 		Path string `db:"path"`
 
-		Order          int   `db:"order"`
-		Interval       int   `db:"interval"`
-		Proficiency    int   `db:"proficiency"`
-		NumRecall      int   `db:"numRecall"`
-		NumForget      int   `db:"numForget"`
-		ConsecRecall   int   `db:"consecRecall"`
-		ConsecForget   int   `db:"consecForget"`
-		LastUpdate     int64 `db:"lastUpdate"`
-		LastRecallDate int64 `db:"lastRecallDate"`
-		Counter        int64 `db:"counter"`
+		Order          int     `db:"order"`
+		Interval       float32 `db:"interval"`
+		Proficiency    int     `db:"proficiency"`
+		NumRecall      int     `db:"numRecall"`
+		NumForget      int     `db:"numForget"`
+		ConsecRecall   int     `db:"consecRecall"`
+		ConsecForget   int     `db:"consecForget"`
+		LastUpdate     int64   `db:"lastUpdate"`
+		LastRecallDate int64   `db:"lastRecallDate"`
+		Counter        int64   `db:"counter"`
 	}
 	var rows []Row
 	err := db.Select(&rows, query, sessionName, date)
@@ -557,6 +557,13 @@ func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, erro
 		if err == os.ErrNotExist || err == os.ErrInvalid {
 			return nil, errorList.ErrInvalidCardPath
 		}
+
+		// reset interval on the next study date
+		interval := row.Interval
+		if row.LastRecallDate != date {
+			interval = 0
+		}
+
 		card := CardData{
 			Filename:       filepath.Base(row.Path),
 			DeckName:       filepath.Dir(row.Path),
@@ -567,7 +574,7 @@ func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, erro
 			LastRecallDate: row.LastRecallDate,
 
 			CardStats: CardStats{
-				Interval:     row.Interval,
+				Interval:     interval,
 				Proficiency:  row.Proficiency,
 				NumRecall:    row.NumRecall,
 				NumForget:    row.NumForget,
@@ -814,15 +821,15 @@ func (self *App) PersistCardStats(card *CardData) error {
 		ID   int64  `db:"id"`
 		Path string `db:"path"`
 
-		Interval       int   `db:"interval"`
-		Proficiency    int   `db:"proficiency"`
-		NumRecall      int   `db:"numRecall"`
-		NumForget      int   `db:"numForget"`
-		ConsecRecall   int   `db:"consecRecall"`
-		ConsecForget   int   `db:"consecForget"`
-		LastUpdate     int64 `db:"lastUpdate"`
-		LastRecallDate int64 `db:"lastRecallDate"`
-		Counter        int64 `db:"counter"`
+		Interval       float32 `db:"interval"`
+		Proficiency    int     `db:"proficiency"`
+		NumRecall      int     `db:"numRecall"`
+		NumForget      int     `db:"numForget"`
+		ConsecRecall   int     `db:"consecRecall"`
+		ConsecForget   int     `db:"consecForget"`
+		LastUpdate     int64   `db:"lastUpdate"`
+		LastRecallDate int64   `db:"lastRecallDate"`
+		Counter        int64   `db:"counter"`
 	}{
 		ID:   card.ID,
 		Path: card.Path,

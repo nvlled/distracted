@@ -43,10 +43,10 @@ import { useAtom } from "jotai";
 import { Flipper, Flipper$, GrindSettings$ } from "./App";
 import { useChanged, useOnMount } from "./hooks";
 import { z } from "zod";
-import { Space } from "./components";
+import { Keybind, Space } from "./components";
 
-const distractionSeconds = 1.0 * 60;
-const batchSize = 7;
+//const distractionSeconds = 1.0 * 60;
+//const batchSize = 7;
 
 namespace _GrindStudySession {
     export interface Props {
@@ -75,9 +75,10 @@ namespace _GrindStudySession {
             cardsReviewed: 0,
             secondsElapsed: 0,
 
-            batchSize: batchSize,
+            batchSize: 10,
             studyBatchDuration: options.studyBatchDuration,
             breakTimeDuration: options.breakTimeDuration,
+            numBreaks: 0,
         });
 
         function onReturn() {
@@ -111,6 +112,7 @@ namespace _GrindStudySession {
             //refs.state.cardStatsMap = getCardStats(updatedCards);
 
             setCards(updatedCards);
+            actions.updateDrillCard(updatedCard);
 
             PersistentState.save({
                 counter: refs.counter,
@@ -128,7 +130,6 @@ namespace _GrindStudySession {
                 );
                 if (nextCard) {
                     setCardID(nextCard.id);
-                    console.log("card", currentCard.filename, "->", nextCard.filename);
                 } else {
                     console.log("no next card");
                 }
@@ -146,16 +147,35 @@ namespace _GrindStudySession {
             setBreakTime(true);
             refs.cardsReviewed = 0;
 
-            if (refs.batchSize < 20) {
-                refs.batchSize += 0.3;
-            }
-            if (options.autoAdjust) {
-                const { batchNum, studyBatchDuration, breakTimeDuration } = refs;
-                const o = options;
-                refs.studyBatchDuration = blah(batchNum, studyBatchDuration, o.studyBatchDuration);
-                refs.breakTimeDuration = blah(batchNum, breakTimeDuration, o.breakTimeDuration);
-            }
+            //if (refs.batchSize < 20) {
+            //    refs.batchSize += 0.3;
+            //}
+            updateDurations(options);
+
             refs.batchNum++;
+            refs.numBreaks++;
+        }
+
+        function updateDurations(options: GrindSettings$.Options.T) {
+            if (options.autoAdjust) {
+                const { batchNum, studyBatchDuration, breakTimeDuration, numBreaks } = refs;
+                const o = options;
+                refs.studyBatchDuration = blah(
+                    numBreaks,
+                    studyBatchDuration,
+                    o.studyBatchDuration * 0.75,
+                );
+                refs.breakTimeDuration = blah(
+                    numBreaks,
+                    breakTimeDuration,
+                    o.breakTimeDuration / 2,
+                );
+                GrindSettings$.Options.save({
+                    autoAdjust: o.autoAdjust,
+                    breakTimeDuration: refs.breakTimeDuration,
+                    studyBatchDuration: refs.studyBatchDuration,
+                });
+            }
         }
 
         function onEditCard() {
@@ -187,11 +207,17 @@ namespace _GrindStudySession {
             if (nextCard) setCardID(nextCard.id);
         }
 
+        function onUpdateSettings(options: GrindSettings$.Options.T) {
+            setOptions(options);
+            refs.breakTimeDuration = options.breakTimeDuration;
+            refs.studyBatchDuration = options.studyBatchDuration;
+            updateDurations(options);
+        }
+
         const initialize = function () {
             //const state = (refs.state = SerializedState.load());
             const savedState = PersistentState.load();
             if (savedState && savedState.date == config().currentDate) {
-                console.log({ savedState });
                 refs.counter = savedState.counter;
                 refs.batchNum = savedState.batchNum;
                 //refs.secondsElapsed = savedState.elapsed;
@@ -220,14 +246,19 @@ namespace _GrindStudySession {
             }
         });
 
-        {
+        /*
+        const sharedOptions = GrindSettings$.Options.current;
+        if (useChanged(sharedOptions.breakTimeDuration)) {
             const newOptions = GrindSettings$.Options.current;
-            if (useChanged(newOptions)) {
-                setOptions(newOptions);
-                refs.studyBatchDuration = newOptions.studyBatchDuration;
-                refs.breakTimeDuration = newOptions.breakTimeDuration;
-            }
+            setOptions({ ...options, breakTimeDuration: sharedOptions.breakTimeDuration });
+            refs.breakTimeDuration = newOptions.breakTimeDuration;
         }
+        if (useChanged(sharedOptions.studyBatchDuration)) {
+            const newOptions = GrindSettings$.Options.current;
+            setOptions({ ...options, studyBatchDuration: sharedOptions.studyBatchDuration });
+            refs.studyBatchDuration = newOptions.studyBatchDuration;
+        }
+        */
 
         const currentCard = OrderedSet.get(cards, cardID);
         let body = <div />;
@@ -262,6 +293,7 @@ namespace _GrindStudySession {
 
         return (
             <div>
+                {/*
                 <small style={{ textAlign: "center" }}>
                     study time: {refs.studyBatchDuration.toFixed(2)}
                     <Space />
@@ -269,10 +301,11 @@ namespace _GrindStudySession {
                     <Space />
                     break time: {refs.breakTimeDuration.toFixed(2)}
                 </small>
+                */}
                 <Container isLoading={loading} ref={containerRef}>
                     <Flex>
                         <Buttons>
-                            <Tooltip content="double-click to return">
+                            <Tooltip content="double-click to return" placement="bottom">
                                 <Button onDoubleClick={() => actions.changePage("home")}>
                                     <Icon slot="prefix" name="house" /> Main
                                 </Button>
@@ -295,7 +328,7 @@ namespace _GrindStudySession {
                             >
                                 <Icon slot="prefix" name="pencil-square" /> Notes
                             </Button>
-                            <Button onClick={() => actions.showGrindSettings()}>
+                            <Button onClick={() => actions.showGrindSettings(onUpdateSettings)}>
                                 <Icon slot="prefix" name="gear" /> Settings
                             </Button>
                         </Buttons>
@@ -454,7 +487,7 @@ namespace _GrindStudySession {
     }
 
     function blah(phase: number, x: number, size: number) {
-        const x_ = x + Math.sin(phase / size / 2) * size * 2;
+        const x_ = x + Math.sin(phase / size) * size;
         return Math.max(x_, 1);
     }
 }
@@ -473,7 +506,9 @@ function Reminders({ onSubmit }: { onSubmit: Action }) {
             </ul>
 
             <div>
-                <button onClick={onSubmit}>got it</button>
+                <Keybind keyName="Enter">
+                    <Button onClick={onSubmit}>got it</Button>
+                </Keybind>
             </div>
         </div>
     );
@@ -525,7 +560,6 @@ export namespace Notes$ {
 
             return () => {
                 if (textarea) {
-                    console.log("saving");
                     app.SaveNotes(textarea.value);
                 }
             };

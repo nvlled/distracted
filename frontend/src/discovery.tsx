@@ -1,6 +1,6 @@
 import { marked } from "marked";
 import { useAtom } from "jotai";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 import { app, main } from "./api";
 import { Card } from "./card";
@@ -36,15 +36,17 @@ import {
     Shoe,
     Tag,
     Tooltip,
+    Animation,
 } from "./shoelace";
 import { boolean, z } from "zod";
 import { produce, enableMapSet } from "immer";
 import { canPlayAudio } from "./DeckAudio";
-import { Space, Tick } from "./components";
+import { Keybind, Space, Tick } from "./components";
 import { config } from "./config";
 import { PreviousSessionCardIDs } from "../wailsjs/go/main/App";
 import { CardFilter$ } from "./playground";
 import { useChanged, useOnMount, usePreviousSessionIDs, useSomeChanged } from "./hooks";
+import { Flipper, Flipper$ } from "./App";
 
 //enableMapSet();
 
@@ -202,6 +204,7 @@ export namespace SequentRecap$ {
         const [state, setState] = useState<RenderState>(defaultRenderState);
         const [filteredCards, setFilteredCards] = useState<main.CardData[]>([]);
 
+        const flipper = useRef<Flipper$.Control | null>(null);
         const audioPlayer = useRef<Ap2$.Control | null>(null);
         const previousIDs = usePreviousSessionIDs();
 
@@ -231,13 +234,16 @@ export namespace SequentRecap$ {
             updateNextCard($state, filteredCards);
         }
 
-        function onHuh() {
+        async function onHuh() {
+            await flipper.current?.flipOut();
             update((s) => onNextCard(s));
+            await flipper.current?.flipIn();
         }
 
-        function onAdd(card: Card | null) {
+        async function onAdd(card: Card | null) {
             if (!card) return;
 
+            await flipper.current?.flipOut();
             if (!drillCards.find((c) => c.id === card.id)) {
                 setDrillCards(drillCards.concat(card));
             }
@@ -246,7 +252,10 @@ export namespace SequentRecap$ {
                 $state.addedCards[card.id] = true;
                 onNextCard($state);
             });
+            await flipper.current?.flipIn();
         }
+
+        function onLearnCard(card: Card) {}
 
         useInterval(1000, () => {
             update(($state) => {
@@ -437,42 +446,61 @@ export namespace SequentRecap$ {
                     <FactorDetails card={card} except={state.factor} />
                 </Details>
 
+                <br />
                 <lt.Row justifyContent={"center"} direction={"column"}>
-                    {card.contextHint && <Hint>{card.contextHint}</Hint>}
-                    {state.factor &&
-                        (state.factor === "text" && randomExample?.length ? (
-                            <TestedFactor
-                                dangerouslySetInnerHTML={{
-                                    __html: marked.parse(randomExample),
-                                }}
-                            />
-                        ) : state.factor === "sound" ? (
-                            <Ap2
-                                src={card.factorData["sound"] ?? ""}
-                                ref={(ref) => (audioPlayer.current = ref)}
-                            />
-                        ) : (
-                            <TestedFactor>{card.factorData[state.factor]}</TestedFactor>
-                        ))}
+                    <Flipper
+                        ref={flipper}
+                        rate={2.0}
+                        inAnimation="bounceIn"
+                        outAnimation="bounceOut"
+                    >
+                        <Flex direction="column">
+                            {card.contextHint && <Hint>{card.contextHint}</Hint>}
+                            {state.factor &&
+                                (state.factor === "text" && randomExample?.length ? (
+                                    <TestedFactor
+                                        dangerouslySetInnerHTML={{
+                                            __html: marked.parse(randomExample),
+                                        }}
+                                    />
+                                ) : state.factor === "sound" ? (
+                                    <Ap2
+                                        src={card.factorData["sound"] ?? ""}
+                                        ref={(ref) => (audioPlayer.current = ref)}
+                                    />
+                                ) : (
+                                    <TestedFactor>{card.factorData[state.factor]}</TestedFactor>
+                                ))}
 
-                    <div>
-                        {state.factor} ({state.countdown})
-                    </div>
+                            <div>
+                                {state.factor} ({state.countdown})
+                            </div>
+                        </Flex>
+                    </Flipper>
 
                     <br />
                     <Flex>
-                        <Button variant="neutral" onClick={onHuh} size="large">
-                            next
-                        </Button>
+                        <Keybind keyName="ArrowLeft">
+                            <Button
+                                size="large"
+                                variant={Card.isNew(card) ? "success" : "warning"}
+                                onClick={() => onAdd(card)}
+                            >
+                                <Icon name="arrow-left" />
+                                {Card.isNew(card) ? "study" : "forgot"}
+                            </Button>
+                        </Keybind>
                         <Block mx={Shoe.spacing_medium}>??</Block>
-                        <Button
-                            size="large"
-                            variant={Card.isNew(card) ? "success" : "warning"}
-                            onClick={() => onAdd(card)}
-                        >
-                            {Card.isNew(card) ? "study" : "forgot"}
-                        </Button>
+                        <Keybind keyName="ArrowRight">
+                            <Button variant="neutral" onClick={onHuh} size="large">
+                                next <Icon name="arrow-right" />
+                            </Button>
+                        </Keybind>
                     </Flex>
+                    <br />
+                    <Button outline size="small" onClick={() => onLearnCard(card)}>
+                        mark as reviewing
+                    </Button>
                 </lt.Row>
             </Container>
         );
@@ -662,3 +690,29 @@ export namespace UnorderedRecap$ {
     const Container = styled.div``;
 }
 export const UnorderedRecap = UnorderedRecap$.View;
+
+function AnimateOnClick({
+    name = "rubberBand",
+    duration = 1000,
+    children,
+}: {
+    duration?: number;
+    name?: string;
+    children: ReactNode;
+}) {
+    const [play, setPlay] = useState(false);
+    return (
+        <Animation
+            iterations={1}
+            duration={duration}
+            name={name}
+            play={play}
+            onSlFinish={() => setPlay(false)}
+            onClick={() => {
+                setPlay(true);
+            }}
+        >
+            {children}
+        </Animation>
+    );
+}

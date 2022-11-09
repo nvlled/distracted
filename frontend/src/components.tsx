@@ -1,7 +1,11 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useAtom } from "jotai";
+import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
-import { lt } from "./layout";
-import { Action, clamp, isSymbol, range, shuffle } from "./lib";
+import { useChanged, useOnMount, useOnUnmount, useSomeChanged } from "./hooks";
+import { Flex, lt } from "./layout";
+import { Action, clamp, deferInvoke, isSymbol, range, shuffle, sleep } from "./lib";
+import { Icon, MutationObserver, Popup, PopupRef, Shoe, Tooltip, TooltipRef } from "./shoelace";
+import { appState } from "./state";
 
 const maxChar = 50;
 
@@ -504,3 +508,139 @@ export function Tick({ intervalMs = 1000, onTick }: { intervalMs?: number; onTic
 
     return <div />;
 }
+
+export namespace Keybind$ {
+    export interface Props {
+        children: ReactNode;
+        ctrl?: boolean;
+        shift?: boolean;
+        keyName: string;
+        otherKeys?: KeyInfo[];
+    }
+    export function View({ children, keyName, ctrl, shift, otherKeys }: Props) {
+        const [show, setShow] = useAtom(appState.showKeybindings);
+        const childrenRef = useRef<HTMLDivElement | null>(null);
+
+        const keys = [{ name: keyName, ctrl, shift } as KeyInfo].concat(otherKeys ?? []);
+
+        //if (useSomeChanged(keyName, shift, ctrl, otherKeys)) {
+        //    setKeys([{ name: keyName, ctrl, shift } as KeyInfo].concat(otherKeys ?? []));
+        //}
+
+        const handler = useCallback(
+            async (e: KeyboardEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!childrenRef.current) return;
+
+                let match = false;
+                for (const k of keys) {
+                    if (k.name === e.key) {
+                        match = true;
+                        break;
+                    }
+                }
+                if (!match) {
+                    return;
+                }
+
+                const node = childrenRef.current?.querySelector('[slot="anchor"]')?.children[0] as
+                    | HTMLElement
+                    | undefined;
+
+                if (!node) {
+                    return;
+                }
+                console.log("activate", keyName);
+                if (e.shiftKey) node.focus();
+                else {
+                    node.focus();
+                    await sleep(250);
+                    node.click();
+                    await sleep(100);
+                    node.blur();
+                }
+            },
+            [keyName, children],
+        );
+
+        useOnMount(() => {
+            window.addEventListener("keyup", handler);
+        });
+        useOnUnmount(() => {
+            return () => window.removeEventListener("keyup", handler);
+        });
+
+        let keyText = keyName;
+        if (keyText === " ") keyText = "Space";
+
+        return (
+            <Container ref={childrenRef}>
+                <KeybindPopup active={show} keys={keys}>
+                    {children}
+                </KeybindPopup>
+            </Container>
+        );
+    }
+    const Container = styled.div``;
+}
+export const Keybind = Keybind$.View;
+
+export interface KeyInfo {
+    name: string;
+    ctrl?: boolean;
+    shift?: boolean;
+}
+export namespace KeybindPopup$ {
+    export interface Props {
+        children: ReactNode;
+        active?: boolean;
+        keys: KeyInfo[];
+    }
+    export function View({ children, keys, active }: Props) {
+        //const popup = useRef<HTMLDivElement | null>(null);
+        //if (popup.current) console.log(getComputedStyle(popup.current).top);
+
+        return (
+            <Container>
+                <Popup
+                    placement="bottom"
+                    active={active}
+                    distance={0}
+                    autoSize="both"
+                    //strategy="absolute"
+                >
+                    <div slot="anchor">{children}</div>
+
+                    <div className="popup-content">
+                        {keys.map((k) => {
+                            let name = k.name;
+                            if (name === " ") name = "Space";
+                            return (
+                                <Flex justifyContent={"start"}>
+                                    <Icon name="command" />
+                                    <Space />
+                                    {k.ctrl && "ctrl+"}
+                                    {k.shift && "shift+"}
+                                    {name}
+                                </Flex>
+                            );
+                        })}
+                    </div>
+                </Popup>
+            </Container>
+        );
+    }
+    const Container = styled.div`
+        [slot="anchor"] {
+            display: inline-block;
+        }
+        .popup-content {
+            padding: 3px;
+            min-width: 50px;
+            font-size: ${Shoe.font_size_2x_small};
+            background: ${Shoe.color_primary_100};
+        }
+    `;
+}
+export const KeybindPopup = KeybindPopup$.View;

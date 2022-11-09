@@ -60,26 +60,26 @@ type CardRow struct {
 	Path   string `db:"path"`
 	Md5sum string `db:"md5sum"`
 
-	Interval       int   `db:"interval"`
-	Proficiency    int   `db:"proficiency"`
-	NumRecall      int   `db:"numRecall"`
-	NumForget      int   `db:"numForget"`
-	ConsecRecall   int   `db:"consecRecall"`
-	ConsecForget   int   `db:"consecForget"`
-	LastUpdate     int64 `db:"lastUpdate"`
-	LastRecallDate int64 `db:"lastRecallDate"`
-	Counter        int64 `json:"counter"`
+	Interval       float32 `db:"interval"`
+	Proficiency    int     `db:"proficiency"`
+	NumRecall      int     `db:"numRecall"`
+	NumForget      int     `db:"numForget"`
+	ConsecRecall   int     `db:"consecRecall"`
+	ConsecForget   int     `db:"consecForget"`
+	LastUpdate     int64   `db:"lastUpdate"`
+	LastRecallDate int64   `db:"lastRecallDate"`
+	Counter        int64   `json:"counter"`
 }
 
 type CardStats struct {
-	Interval     int   `json:"interval"`
-	Proficiency  int   `json:"proficiency"`
-	NumRecall    int   `json:"numRecall"`
-	NumForget    int   `json:"numForget"`
-	ConsecRecall int   `json:"consecRecall"`
-	ConsecForget int   `json:"consecForget"`
-	LastUpdate   int64 `json:"lastUpdate"`
-	Counter      int64 `json:"counter"`
+	Interval     float32 `json:"interval"`
+	Proficiency  int     `json:"proficiency"`
+	NumRecall    int     `json:"numRecall"`
+	NumForget    int     `json:"numForget"`
+	ConsecRecall int     `json:"consecRecall"`
+	ConsecForget int     `json:"consecForget"`
+	LastUpdate   int64   `json:"lastUpdate"`
+	Counter      int64   `json:"counter"`
 }
 
 type CardData struct {

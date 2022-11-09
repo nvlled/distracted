@@ -10,7 +10,7 @@ require (
 	github.com/labstack/echo/v4 v4.9.0
 	github.com/samber/lo v1.27.1
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
-	github.com/wailsapp/wails/v2 v2.0.0
+	github.com/wailsapp/wails/v2 v2.1.0
 )
 
 require (
@@ -38,7 +38,7 @@ require (
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
 	golang.org/x/exp v0.0.0-20220303212507-bbda1eaf7a17 // indirect
-	golang.org/x/net v0.0.0-20211015210444-4f30a5c0130f // indirect
+	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
 	golang.org/x/sys v0.0.0-20220829200755-d48e67d00261 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	modernc.org/libc v1.16.8 // indirect
@@ -47,4 +47,4 @@ require (
 	modernc.org/sqlite v1.17.3 // indirect
 )
 
-replace github.com/wailsapp/wails/v2 v2.0.0 => /home/nvlled/opt/wails/v2
+replace github.com/wailsapp/wails/v2 v2.1.0 => /home/nvlled/opt/wails/v2

@@ -20,6 +20,12 @@ import {
     TabGroupRef,
     TabRef,
     CardBox,
+    ButtonGroup,
+    FormatDate,
+    IconButton,
+    Switch,
+    Menu,
+    RelativeTime,
 } from "./shoelace";
 import {
     ForwardedRef,
@@ -37,21 +43,27 @@ import {
     Action,
     Action1,
     Action2,
+    formatDuration,
+    hasProp,
     OrderedSet,
     partition,
+    randomElem,
     shuffle,
     timeToDate,
     tryJSONParse,
 } from "./lib";
 import { appState } from "./state";
 import { useAtom } from "jotai";
-import { Space } from "./components";
+import { Keybind, Space } from "./components";
 import { app, main } from "./api";
 import { z } from "zod";
 import produce from "immer";
 import { Card } from "./card";
 import { SequentRecap } from "./discovery";
 import { config } from "./config";
+import { useChanged, useSomeChanged } from "./hooks";
+import { Factors } from "./factors";
+import { SlFormatDate } from "@shoelace-style/shoelace/dist/react";
 
 namespace TimeSpan {
     export type Unit = z.infer<typeof unitSchema>;
@@ -190,13 +202,13 @@ export namespace Playground$ {
                         </Button>
                     </Block>
 
-                    <TabPanel name="overview">{discoverTab === "overview" && "TODO"}</TabPanel>
+                    <TabPanel name="overview">{discoverTab === "overview"}</TabPanel>
                     <TabPanel name="pick">
                         {discoverTab === "pick" && filterOptions && (
                             <SequentRecap filter={filterOptions} />
                         )}
                     </TabPanel>
-                    <TabPanel name="search">{discoverTab === "search" && "TODO"}</TabPanel>
+                    <TabPanel name="search">{discoverTab === "search"}</TabPanel>
                     <TabPanel name="cards">
                         <CardFilter ref={cardFilterRef} onLoad={onLoad} />
                     </TabPanel>
@@ -204,7 +216,14 @@ export namespace Playground$ {
             </>
         );
 
-        const addedContent = <SelectedCards onSubmit={onStart} />;
+        const addedContent = (
+            <SelectedCards
+                onSubmit={onStart}
+                //onChangeOrder={onChangeSelectedSort}
+                //sortType={sortType}
+                //desc={desc}
+            />
+        );
 
         return (
             <Container>
@@ -226,6 +245,12 @@ export namespace Playground$ {
                 >
                     {addedContent}
                 </Details>
+                <br />
+                <Keybind keyName=" ">
+                    <Button variant="primary" size="large" onClick={onStart}>
+                        start
+                    </Button>
+                </Keybind>
             </Container>
         );
     }
@@ -524,9 +549,9 @@ export namespace CardFilter$ {
                                 <Block mt={Shoe.spacing_small} />
                                 <CardListEditor
                                     items={options.customCards.data}
-                                    onChange={(lines) =>
-                                        update((opt) => (opt.customCards.data = lines))
-                                    }
+                                    //onChange={(lines) =>
+                                    //    update((opt) => (opt.customCards.data = lines))
+                                    //}
                                 />
                             </>
                         )}
@@ -670,37 +695,34 @@ export namespace CardListEditor$ {
     export interface Props {
         listClassName?: string;
         items: string[];
-        onChange?: Action2<string[], boolean>;
     }
 
     export interface Controls {
-        validate: () => Promise<boolean>;
+        validate: () => Promise<[boolean, string]>;
         getText: () => string;
         clearErrors: () => void;
     }
 
-    export const View = forwardRef(function View(
-        { onChange, items }: Props,
-        ref: ForwardedRef<Controls>,
-    ) {
+    export const View = forwardRef(function View({ items }: Props, ref: ForwardedRef<Controls>) {
         const [invalidFilenames, setInvalidFilenames] = useState<string[] | null>(null);
         const textareaRef = useRef<TextareaRef>();
+        const [lines, setLines] = useState(items);
 
-        const onCheck = useCallback(
-            async function () {
-                if (!textareaRef.current) {
-                    return false;
-                }
+        if (useChanged(items)) {
+            setLines(items);
+            if (textareaRef.current) textareaRef.current.value = items.join("\n");
+        }
 
-                const [text, invalidPaths] = await validateAndFormat(textareaRef.current.value);
-                setInvalidFilenames(invalidPaths.slice(0, 10));
-                textareaRef.current.value = text;
-                onChange?.(text.split("\n"), invalidPaths.length > 0);
+        async function onCheck(): Promise<[boolean, string]> {
+            if (!textareaRef.current) {
+                return [false, ""];
+            }
 
-                return invalidPaths.length > 0;
-            },
-            [onChange],
-        );
+            const [text, invalidPaths] = await validateAndFormat(textareaRef.current.value);
+            setInvalidFilenames(invalidPaths.slice(0, 10));
+
+            return [invalidPaths.length > 0, text];
+        }
 
         useImperativeHandle(
             ref,
@@ -711,11 +733,11 @@ export namespace CardListEditor$ {
                     setInvalidFilenames(null);
                 },
             }),
-            [onCheck, setInvalidFilenames],
+            [],
         );
 
         function onInput() {
-            setInvalidFilenames(null);
+            //setInvalidFilenames(null);
         }
 
         return (
@@ -737,11 +759,11 @@ export namespace CardListEditor$ {
                         <Textarea
                             resize="auto"
                             className="card-text-input"
-                            value={items.join("\n")}
+                            value={lines.join("\n")}
                             ref={textareaRef}
                             placeholder="example: deckname/card-filename.md"
                             onSlInput={onInput}
-                            onSlChange={onCheck}
+                            //onSlChange={onCheck}
                             spellcheck={false}
                         >
                             {invalidFilenames?.length && (
@@ -845,31 +867,58 @@ export namespace CardListEditor$ {
 export const CardListEditor = CardListEditor$.View;
 
 export namespace SelectedCards$ {
+    const sortTypes = ["added", "proficiency", "interval", "last reviewed", "random"] as const;
+    export type SortType = typeof sortTypes[number];
+    export type Sort = { type: SortType; desc: boolean };
+
     export interface Props {
         onSubmit: Action;
+        //sortType?: SortType;
+        //desc?: boolean;
+        //onChangeOrder?: Action2<SortType, boolean>;
     }
-    export function View({ onSubmit }: Props) {
+    export function View({ onSubmit /*sortType = "added", desc = false*/ }: Props) {
         const [actions] = useAtom(appState.actions);
         const [allUserCards] = useAtom(appState.allUserCards);
         const [cards, setCards] = useAtom(appState.drillCards);
+        const [sort, setSort] = useAtom(appState.drillSort);
         const [editing, setEdit] = useState(false);
-        const [lines, setLines] = useState<string[]>([]);
         const [hasError, setHasError] = useState(false);
         const listEditor = useRef<CardListEditor$.Controls | null>(null);
 
-        useEffect(() => {
-            setLines(cards.map((c) => c.path));
-        }, [cards]);
+        const sortedCards = CardSort.sort(sort.type, sort.desc, cards);
+        const [lines, setLines] = useState(sortedCards.map((c) => c.path));
+
+        if (useSomeChanged(cards, sort.type, sort.desc)) {
+            const updatedLines = sortedCards.map((c) => c.path);
+            setLines(updatedLines);
+        }
+
+        function onChangeSelectedSort(type: CardSort.Type, desc: boolean) {
+            setSort({ type, desc });
+        }
 
         async function onAction() {
             const edit = !editing;
             if (!edit) {
-                const hasErrors = await listEditor?.current?.validate();
+                const [hasErrors, text] = (await listEditor.current?.validate()) ?? [true, ""];
                 if (hasErrors) return;
 
+                const lines = text.split("\n").filter((l) => Boolean(l.trim()));
                 const set = new Set(lines);
-                const cards = allUserCards.filter((c) => set.has(c.path)).map((c) => Card.parse(c));
+                const cardMap = new Map<string, Card>();
+                const filtered = allUserCards
+                    .filter((c) => set.has(c.path))
+                    .map((c) => Card.parse(c));
+
+                for (const c of filtered) {
+                    cardMap.set(c.path, c);
+                }
+
+                const cards = lines.map((path) => cardMap.get(path) ?? Card.createEmpty());
+
                 setCards(cards);
+                //setSort({ type: "added", desc: false });
                 setLines(lines);
                 actions.saveCards(cards);
             }
@@ -877,48 +926,164 @@ export namespace SelectedCards$ {
             setEdit(edit);
             setHasError(false);
         }
+
         async function onCancel() {
             setEdit(false);
             setHasError(false);
             setLines(cards.map((c) => c.path));
             listEditor.current?.clearErrors();
         }
-        function onChange(lines: string[], hasError: boolean) {
-            setLines(lines);
-            setHasError(hasError);
+
+        function onReload() {
+            setCards([...cards]);
         }
 
         return (
             <Container>
                 <Block hide={!editing} className="entries">
-                    <CardListEditor items={lines} ref={listEditor} onChange={onChange} />
+                    <CardListEditor items={lines} ref={listEditor} />
                 </Block>
+                <Block></Block>
                 <Flex hide={editing} className="entries">
-                    <ol>
-                        {cards.map((c) => (
-                            <li key={c.id}>{c.path}</li>
-                        ))}
-                    </ol>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th className="num">
+                                    <Button variant="default" onClick={onAction} size="small">
+                                        {"edit"}
+                                    </Button>
+                                </th>
+                                <th className="filename">
+                                    <Flex>filename</Flex>
+                                </th>
+                                <th className="sort">
+                                    <Flex cml={5}>
+                                        <IconButton name="arrow-clockwise" onClick={onReload} />
+                                        <Select
+                                            onSlChange={(e) =>
+                                                onChangeSelectedSort?.(
+                                                    EventUtil.value(e) as SortType,
+                                                    sort.desc,
+                                                )
+                                            }
+                                            className="sort-types"
+                                            value={sort.type}
+                                            size="small"
+                                        >
+                                            {CardSort.types.map((s) => (
+                                                <MenuItem key={s} value={s}>
+                                                    {s}
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                        <Switch
+                                            disabled={sort.type === "random"}
+                                            checked={sort.desc}
+                                            onSlChange={(e) =>
+                                                onChangeSelectedSort?.(
+                                                    sort.type,
+                                                    EventUtil.isChecked(e),
+                                                )
+                                            }
+                                        >
+                                            desc
+                                        </Switch>
+                                    </Flex>
+                                    {/*sortType != "added" ? sortType : null*/}
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sortedCards.map((c, i) => (
+                                <tr key={c.id}>
+                                    <td className="num">{i + 1}</td>
+                                    <td className="filename">{c.path} </td>
+                                    <td className="sort">
+                                        {sort.type === "interval" ? (
+                                            c.interval
+                                        ) : sort.type === "last reviewed" ? (
+                                            <LastUpdate timestamp={c.lastUpdate} />
+                                        ) : sort.type === "proficiency" ? (
+                                            Factors.getAverage(c.proficiency)
+                                        ) : null}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </Flex>
-                <Flex justifyContent={"start"} cmr="5px">
-                    {editing && (
+                {editing && (
+                    <Flex justifyContent={"end"} cmr="5px">
                         <Button variant="default" onClick={onCancel}>
                             cancel
                         </Button>
-                    )}
-                    <Button variant="default" disabled={hasError} onClick={onAction}>
-                        {editing ? "save" : "edit cards"}
-                    </Button>
-                    {!editing && (
+                        <Button variant="default" onClick={onAction}>
+                            {"save changes"}
+                        </Button>
+                        {/*!editing && (
                         <Button variant="primary" onClick={onSubmit}>
                             start
                         </Button>
-                    )}
-                </Flex>
+                    )*/}
+                    </Flex>
+                )}
             </Container>
         );
     }
     const Container = styled.div`
+        .entries {
+        }
+        .sort-types {
+            width: 150px;
+        }
+        sl-switch {
+            --width: 30px;
+            --height: 16px;
+            --thumb-size: 13px;
+        }
+        table {
+            width: 100%;
+            td {
+                padding: 2px;
+                display: block;
+            }
+            th {
+                background: ${Shoe.panel_background_color};
+                position: sticky;
+                z-index: ${Shoe.z_index_dropdown};
+                top: 0px;
+            }
+            tr {
+                width: 100%;
+                display: flex;
+            }
+            td {
+            }
+            thead {
+                display: block;
+            }
+            tbody {
+                width: 100%;
+                display: block;
+                position: relative;
+                max-height: 50vh !important;
+                overflow-y: auto;
+                overflow-x: hidden;
+            }
+            th.num,
+            td.num {
+                width: 40px;
+            }
+            th.filename,
+            td.filename {
+                width: 70%;
+            }
+            td.sort {
+                width: 30%;
+                text-align: right;
+            }
+        }
+
         ul,
         ol {
             width: 100%;
@@ -932,5 +1097,69 @@ export namespace SelectedCards$ {
             }
         }
     `;
+
+    function LastUpdate({ timestamp }: { timestamp: number }) {
+        const d = new Date(timestamp * 1000);
+        const now = new Date();
+        return timestamp === 0 ? null : <RelativeTime date={d} />;
+    }
 }
+
 export const SelectedCards = SelectedCards$.View;
+
+export namespace CardSort {
+    export const types = ["added", "proficiency", "interval", "last reviewed", "random"] as const;
+    export type Type = typeof types[number];
+    export type Sort = { type: Type; desc: boolean };
+
+    export const defaultSort: Sort = {
+        type: "added",
+        desc: false,
+    };
+
+    export function sort(sortType: Type, desc: boolean, cards: Card[]) {
+        cards = [...cards];
+        if (sortType === "added") {
+            if (desc) cards.reverse();
+            return cards;
+        }
+
+        cards.sort((a, b) => {
+            const sign = desc ? -1 : 1;
+            if (sortType === "interval") {
+                return (a.interval - b.interval) * sign;
+            }
+            if (sortType === "last reviewed") {
+                return (a.lastUpdate - b.lastUpdate) * sign;
+            }
+            if (sortType === "proficiency") {
+                const x = Factors.getAverage(a.proficiency);
+                const y = Factors.getAverage(b.proficiency);
+                return (x - y) * sign;
+            }
+            if (sortType === "random") {
+                return randomElem([1, 0, -1]) ?? 0;
+            }
+
+            return 0;
+        });
+        return cards;
+    }
+
+    const lsKey = "grind-card-sort";
+    export function saveDrillSort(sort: Sort) {
+        localStorage.setItem(lsKey, JSON.stringify(sort));
+    }
+    export function loadDrillSort() {
+        const obj = tryJSONParse(localStorage.getItem(lsKey) ?? "");
+        const sort = { ...CardSort.defaultSort };
+        if (hasProp(obj, "type", "string")) {
+            const type = obj.type as CardSort.Type;
+            if (CardSort.types.includes(type)) sort.type = type;
+        }
+        if (hasProp(obj, "desc", "boolean")) {
+            sort.desc = obj.desc as boolean;
+        }
+        return sort;
+    }
+}
