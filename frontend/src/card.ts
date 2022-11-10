@@ -86,7 +86,7 @@ export const Card = {
             },
             availableFactors: new Set(),
 
-            id: 0,
+            id: -1,
             order: 0,
             proficiency: 0,
             numRecall: 0,

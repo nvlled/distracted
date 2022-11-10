@@ -23,9 +23,14 @@ const actions = {
     setDrawer: (options: AppDrawerOptions, content: ReactNode) => {},
     showGrindSettings: (_: (options: GrindSettings$.Options.T) => void) => {},
     toastInfo: (message: string, options?: ToastOptions) => {},
+    updateCard: (card: Card) => {},
+    updateCardStat: async (card: Card) => {},
+
+    addDrillCard: (cardID: number) => {},
     removeDrillCard: (cardID: number) => {},
-    updateDrillCard: (card: Card) => {},
-    saveCards: (cards: Card[]) => {},
+    updateDrillCards: (cards: Card[]) => {},
+
+    //saveCards: (cards: Card[]) => {},
 };
 export type AppActions = typeof actions;
 
@@ -35,10 +40,16 @@ export const appState = {
     userData: atom(main.UserData.createFrom()),
     mainPage: atom("home" as MainPages),
 
-    drillCards: atom([] as Card[]),
+    drillCardIDs: atom([] as number[]),
+    drillPendingSave: atom(false),
+    //drillCards: atom([] as Card[]),
     drillSort: atom({ type: "added", desc: false } as CardSort.Sort),
 
     allUserCards: atom([] as main.CardData[]),
+    allCardMap: atom(new Map<number, main.CardData | undefined>()),
+    /*
+    drillCards: Card[]
+    */
 
     currentDrillCard: atom(null as Card | null),
 
@@ -53,5 +64,5 @@ export const appState = {
 
     actions: atom(actions as AppActions),
 
-    showKeybindings: atom(true),
+    showKeybindings: atom(false),
 };

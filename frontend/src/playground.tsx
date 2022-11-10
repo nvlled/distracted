@@ -61,7 +61,7 @@ import produce from "immer";
 import { Card } from "./card";
 import { SequentRecap } from "./discovery";
 import { config } from "./config";
-import { useChanged, useSomeChanged } from "./hooks";
+import { useChanged, useDrillCards, useSomeChanged } from "./hooks";
 import { Factors } from "./factors";
 import { SlFormatDate } from "@shoelace-style/shoelace/dist/react";
 
@@ -109,7 +109,8 @@ export namespace Playground$ {
         const [collapseTabs, setCollapseTabs] = useState(false);
         const [actions] = useAtom(appState.actions);
         const [allUserCards] = useAtom(appState.allUserCards);
-        const [drillCards] = useAtom(appState.drillCards);
+
+        const [drillCards] = useDrillCards();
 
         const [filterOptions, setFilterOptions] = useState<CardFilter$.Options | undefined>(
             undefined,
@@ -131,21 +132,8 @@ export namespace Playground$ {
         }
 
         function onStart() {
-            actions.saveCards(drillCards);
             onSubmit();
         }
-
-        const filteredCards = useMemo(() => {
-            const addedSet = new Set(drillCards.map((c) => c.id));
-            let rawCards = filterOptions
-                ? CardFilter$.filterCards(allUserCards, filterOptions)
-                : allUserCards;
-
-            rawCards = rawCards.filter((c) => !addedSet.has(c.id));
-            //rawCards = shuffle(rawCards);
-
-            return rawCards;
-        }, [allUserCards, filterOptions, drillCards]);
 
         const discoverContent = (
             <>
@@ -229,15 +217,15 @@ export namespace Playground$ {
             <Container>
                 <Details
                     className="details"
-                    summary={`Find cards to study ${
-                        filterOptions ? `(${filteredCards.length})` : ""
-                    }`}
+                    //onFocus={(e) => e.target.blur()}
+                    summary={`Discover cards to study`}
                     onSlShow={() => setShowDiscover(true)}
                     onSlHide={() => setShowDiscover(false)}
                 >
                     {discoverContent}
                 </Details>
                 <Details
+                    //onFocus={(e) => e.target.blur()}
                     className="details"
                     summary={`Cards for today (${drillCards.length})`}
                     onSlShow={() => setShowAdded(true)}
@@ -246,11 +234,9 @@ export namespace Playground$ {
                     {addedContent}
                 </Details>
                 <br />
-                <Keybind keyName=" ">
-                    <Button variant="primary" size="large" onClick={onStart}>
-                        start
-                    </Button>
-                </Keybind>
+                <Button variant="primary" size="large" onClick={onStart}>
+                    start
+                </Button>
             </Container>
         );
     }
@@ -880,11 +866,12 @@ export namespace SelectedCards$ {
     export function View({ onSubmit /*sortType = "added", desc = false*/ }: Props) {
         const [actions] = useAtom(appState.actions);
         const [allUserCards] = useAtom(appState.allUserCards);
-        const [cards, setCards] = useAtom(appState.drillCards);
         const [sort, setSort] = useAtom(appState.drillSort);
         const [editing, setEdit] = useState(false);
         const [hasError, setHasError] = useState(false);
         const listEditor = useRef<CardListEditor$.Controls | null>(null);
+
+        const [cards, setCards] = useDrillCards();
 
         const sortedCards = CardSort.sort(sort.type, sort.desc, cards);
         const [lines, setLines] = useState(sortedCards.map((c) => c.path));
@@ -920,7 +907,6 @@ export namespace SelectedCards$ {
                 setCards(cards);
                 //setSort({ type: "added", desc: false });
                 setLines(lines);
-                actions.saveCards(cards);
             }
 
             setEdit(edit);
@@ -954,7 +940,7 @@ export namespace SelectedCards$ {
                                     </Button>
                                 </th>
                                 <th className="filename">
-                                    <Flex>filename</Flex>
+                                    <Flex height="100%">filename</Flex>
                                 </th>
                                 <th className="sort">
                                     <Flex cml={5}>

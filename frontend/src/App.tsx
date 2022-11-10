@@ -11,13 +11,14 @@ import {
 import * as app from "../wailsjs/go/main/App";
 import * as runtime from "../wailsjs/runtime";
 import { useAtom } from "jotai";
-import { AppDrawerOptions, appState, ToastOptions } from "./state";
+import { AppActions, AppDrawerOptions, appState, ToastOptions } from "./state";
 import { Card } from "./card";
 import styled, { keyframes } from "styled-components";
 import {
     Action,
     Action1,
     deferInvoke,
+    getCard,
     hasProp,
     MainPages,
     sleep,
@@ -27,7 +28,7 @@ import {
 } from "./lib";
 import { config, setConfig } from "./config";
 
-import { cardEvents } from "./api";
+import { cardEvents, main } from "./api";
 import { Flex, lt } from "./layout";
 
 import "./App.css";
@@ -57,7 +58,7 @@ import {
 import { SlAnimation } from "@shoelace-style/shoelace/dist/react";
 import { Ap2 } from "./AudioPlayer";
 import { Space } from "./components";
-import { useOnMount, useOnUnmount, useSomeChanged, useChanged } from "./hooks";
+import { useOnMount, useOnUnmount, useSomeChanged, useChanged, useKeyPress } from "./hooks";
 import { z } from "zod";
 // web server path? or filesystem path?
 //setBasePath("../public/");
@@ -154,15 +155,17 @@ const AppContainer = styled.div``;
 let appInitialized = false;
 function App() {
     //const [deckFiles, setDeckFiles] = useAtom(appState.deckFiles);
-    const [, setActions] = useAtom(appState.actions);
+    const [actions, setActions] = useAtom(appState.actions);
     const [, setDecks] = useAtom(appState.decks);
     const [, setUserData] = useAtom(appState.userData);
-    const [, setAllUserCards] = useAtom(appState.allUserCards);
-    const [drillCards, setDrillCards] = useAtom(appState.drillCards);
+    const [allUserCards, setAllUserCards] = useAtom(appState.allUserCards);
+    const [allCardMap, setAllCardMap] = useAtom(appState.allCardMap);
+    //const [drillCards, setDrillCards] = useAtom(appState.drillCards);
+    const [drillCardIDs, setDrillCardIDs] = useAtom(appState.drillCardIDs);
     const [drillSort, setDrillSort] = useAtom(appState.drillSort);
     const [mainPage, setMainPage] = useAtom(appState.mainPage);
     const [initialized, setInitialized] = useState(false);
-    const [sortedCards, setSortedCards] = useState<Card[]>([]);
+    const [sortedCards, setSortedCardIDs] = useState<number[]>([]);
 
     const [drawerContent, setDrawerContent] = useState<ReactNode | null>(null);
     const [drawerOptions, setDrawerOptions] = useState<AppDrawerOptions | null>(null);
@@ -177,7 +180,7 @@ function App() {
         appInitialized = true;
         console.log("app init");
 
-        const appActions = {
+        const appActions: AppActions = {
             changePage: (name: MainPages) => {
                 setMainPage(name);
             },
@@ -200,11 +203,25 @@ function App() {
                 document.body.append(alert);
                 return alert.toast();
             },
-            removeDrillCard(cardID: number) {
-                setDrillCards((cards) => cards.filter((c) => c.id !== cardID));
+
+            updateCard(card: Card) {
+                setAllUserCards((cards) => cards.map((c) => (c.id !== card.id ? c : card)));
             },
-            updateDrillCard(card: Card) {
-                setDrillCards((cards) => cards.map((c) => (c.id !== card.id ? c : card)));
+            async updateCardStat(card: Card) {
+                await app.PersistCardStats(card);
+                setAllUserCards((cards) => cards.map((c) => (c.id !== card.id ? c : card)));
+            },
+
+            addDrillCard(cardID: number) {
+                setDrillCardIDs((ids) => ids.concat(cardID));
+            },
+            removeDrillCard(cardID: number) {
+                //setDrillCards((cards) => cards.filter((c) => c.id !== cardID));
+                setDrillCardIDs((ids) => ids.filter((id) => id !== cardID));
+            },
+            updateDrillCards(cards: Card[]) {
+                setDrillCardIDs(cards.map((c) => c.id));
+                //setDrillCards((cards) => cards.map((c) => (c.id !== card.id ? c : card)));
             },
             showGrindSettings(onSave: (_: GrindSettings$.Options.T) => void) {
                 this.setDrawer(
@@ -215,13 +232,6 @@ function App() {
                     <GrindSettings onSave={onSave} />,
                 );
             },
-            saveCards: deferInvoke(5000, (cards: Card[]) => {
-                app.CreateStudySession(
-                    config().defaultStudyName,
-                    config().studySessionTypes.normal,
-                    cards.map((c) => c.path),
-                );
-            }),
         };
         setActions(appActions);
 
@@ -233,13 +243,19 @@ function App() {
                 app.GetDailyStudyCardIds(),
             ]);
 
+            const cardMap = new Map<number, main.CardData>();
+            for (const c of allUserCards) {
+                cardMap.set(c.id, c);
+            }
+
+            setAllUserCards(allUserCards);
+            setAllCardMap(cardMap);
             setUserData(userData);
             setDecks(decks);
-            setAllUserCards(allUserCards);
-
-            const idSet = new Set(cardIDs);
-            setDrillCards(allUserCards.filter((c) => idSet.has(c.id)).map((c) => Card.parse(c)));
             setDrillSort(CardSort.loadDrillSort());
+            setDrillCardIDs(cardIDs);
+
+            //setDrillCards(allUserCards.filter((c) => cardMap.has(c.id)).map((c) => Card.parse(c)));
 
             setInitialized(true);
 
@@ -249,7 +265,7 @@ function App() {
                 }
                 const cardData = await app.GetCard(data);
                 const card = Card.parse(cardData);
-                setDrillCards((cards) => cards.map((c) => (c.id !== card.id ? c : card)));
+                //setDrillCards((cards) => cards.map((c) => (c.id !== card.id ? c : card)));
                 setAllUserCards((cards) => cards.map((c) => (c.id !== card.id ? c : cardData)));
             });
 
@@ -272,6 +288,20 @@ function App() {
         //};
     }, []);
 
+    if (useChanged(allUserCards)) {
+        const cardMap = new Map<number, main.CardData>();
+        for (const c of allUserCards) {
+            cardMap.set(c.id, c);
+        }
+
+        // TODO:
+        // setAllCardMap(cardMap);
+    }
+
+    if (useChanged(drillCardIDs)) {
+        saveCards(drillCardIDs.map((id) => getCard(id, allCardMap)));
+    }
+
     if (useSomeChanged(drillSort.type, drillSort.desc)) {
         CardSort.saveDrillSort(drillSort);
     }
@@ -280,6 +310,10 @@ function App() {
         const config = await app.GetConfig();
         setConfig(config);
     });
+
+    if (!appInitialized) {
+        return "loading";
+    }
 
     return (
         <AppContainer id="App">
@@ -323,7 +357,7 @@ function App() {
             mainPage == "drill" ? (
                 <GrindStudySession
                     sessionName={config().defaultStudyName}
-                    initCards={sortedCards}
+                    initCardIDs={sortedCards}
                     onQuit={() => setMainPage("home")}
                     //onAddMoreCards={() => {
                     //    setEditDailies(true);
@@ -333,7 +367,9 @@ function App() {
             ) : mainPage == "home" ? (
                 <Playground
                     onSubmit={() => {
-                        setSortedCards(CardSort.sort(drillSort.type, drillSort.desc, drillCards));
+                        const cards = drillCardIDs.map((id) => getCard(id, allCardMap));
+                        const sorted = CardSort.sort(drillSort.type, drillSort.desc, cards);
+                        setSortedCardIDs(sorted.map((c) => c.id));
                         setMainPage("drill");
                     }}
                 />
@@ -431,10 +467,21 @@ export namespace ToggleKeybindInfo$ {
     export interface Props {}
     export function View({}: Props) {
         const [show, setShow] = useAtom(appState.showKeybindings);
+
+        useKeyPress("F2", () => {
+            setShow(!show);
+        });
+
         return (
             <Container active={show}>
-                <Tooltip content="show key shortcuts" placement="right">
-                    <IconButton name="keyboard" onClick={() => setShow(!show)} />
+                <Tooltip content="show key shortcuts (F2 to toggle)" placement="right">
+                    <IconButton
+                        name="keyboard"
+                        onClick={(e) => {
+                            (e.target as HTMLDivElement).blur();
+                            setShow(!show);
+                        }}
+                    />
                 </Tooltip>
             </Container>
         );
@@ -630,3 +677,11 @@ export namespace GrindSettings$ {
     }
 }
 export const GrindSettings = GrindSettings$.View;
+
+const saveCards = deferInvoke(1000, (cards: Card[]) => {
+    app.CreateStudySession(
+        config().defaultStudyName,
+        config().studySessionTypes.normal,
+        cards.map((c) => c.path),
+    );
+});

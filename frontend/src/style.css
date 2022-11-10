@@ -35,3 +35,7 @@ a {
 a:visited { 
     color: var(--sl-color-primary-700);
 }
+
+:root {
+--sl-font-size-3x-small: 8px;
+}

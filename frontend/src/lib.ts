@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ZodRawShape } from "zod";
-import { app, cardEvents } from "./api";
+import { app, cardEvents, main } from "./api";
 import { Card } from "./card";
+import { useChanged, useOnMount, useOnUnmount } from "./hooks";
 
 export type MainPages = "intro" | "drill" | "home" | "prepare";
 
@@ -434,6 +435,27 @@ export function useCardWatch(cardInit: Card) {
     }, [cardInit.path]);
 
     return createPair(card, setCard);
+
+    /*
+    const [card, setCard] = useState(cardInit);
+
+    if (useChanged(card.id)) {
+        setCard(cardInit);
+    }
+
+    useOnMount(() => {
+        setCard(cardInit);
+        cardEvents.addListener(setCard);
+        app.WatchCardFile(cardInit.path);
+    });
+
+    useOnUnmount(() => {
+        app.UnwatchCardFile(cardInit.path);
+        cardEvents.removeListener(setCard);
+    });
+    */
+
+    return createPair(card, setCard);
 }
 
 export function partition<T>(xs: T[], p: (x: T) => boolean): [T[], T[]] {
@@ -496,4 +518,20 @@ export function deferInvoke(millis: number, fn: Function) {
         window.clearInterval(timerID);
         timerID = window.setTimeout(() => fn(...args), millis);
     };
+}
+
+export function getCard(id: number, cardMap: Map<number, main.CardData | undefined>): Card {
+    const data = cardMap.get(id);
+    if (!data) {
+        return { ...Card.createEmpty(), filename: `unknown card id: ${id}` };
+    }
+    return Card.parse(data);
+}
+
+export function setToArray<T>(xs: Set<T>): T[] {
+    const result: T[] = [];
+    for (const x of xs) {
+        result.push(x);
+    }
+    return result;
 }

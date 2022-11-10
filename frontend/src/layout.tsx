@@ -53,6 +53,8 @@ export namespace lt {
         b?: string | number | undefined;
         bc?: string | undefined;
         bt?: string | undefined;
+
+        height?: string | number | undefined;
     }
 }
 
@@ -132,6 +134,8 @@ export const Flex = styled.div<lt.RowProps & lt.BlockProps>`
     ${(props) => entryPx("border-width", props.b, 0)};
     ${(props) => entryPx("border-color", props.bc ?? Shoe.color_primary_900)};
     ${(props) => entryPx("border-style", props.bt ?? "solid")};
+
+    ${(props) => entryPx("height", props.height)};
 `;
 
 export const Block = styled.div<lt.BlockProps>`
@@ -161,4 +165,6 @@ export const Block = styled.div<lt.BlockProps>`
     ${(props) => entryPx("border-width", props.b, 0)};
     ${(props) => entryPx("border-color", props.bc ?? Shoe.input_border_color)};
     ${(props) => entryPx("border-style", props.bt ?? "solid")};
+
+    ${(props) => entryPx("height", props.height)};
 `;

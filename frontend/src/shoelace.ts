@@ -291,6 +291,7 @@ export namespace Shoe {
     export const font_serif = "var(--sl-font-serif)";
 
     /* Font sizes */
+    export const font_size_3x_small = "var(--sl-font-size-3x-small)";
     export const font_size_2x_small = "var(--sl-font-size-2x-small)";
     export const font_size_x_small = "var(--sl-font-size-x-small)";
     export const font_size_small = "var(--sl-font-size-small)";

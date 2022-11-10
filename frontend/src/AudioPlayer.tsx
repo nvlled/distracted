@@ -283,14 +283,6 @@ export namespace Ap2$ {
         .sound-settings-body {
             font-size: ${Shoe.font_size_small};
         }
-        sl-dialog {
-            --width: 50vw;
-        }
-        sl-tooltip {
-            font-size: ${Shoe.font_size_x_large};
-            --max-width: 40vw;
-            --show-delay: 1000;
-        }
     `;
 }
 export const Ap2 = Ap2$.View;

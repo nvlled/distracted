@@ -7,6 +7,7 @@ import { FactorTrial } from "./factors";
 import {
     Action,
     currentDate,
+    getCard,
     hasProp,
     LocalStorageSerializer,
     OrderedSet,
@@ -41,9 +42,10 @@ import { Block, Flex } from "./layout";
 import { appState } from "./state";
 import { useAtom } from "jotai";
 import { Flipper, Flipper$, GrindSettings$ } from "./App";
-import { useChanged, useOnMount } from "./hooks";
+import { useCards, useChanged, useOnMount } from "./hooks";
 import { z } from "zod";
 import { Keybind, Space } from "./components";
+import { current } from "immer";
 
 //const distractionSeconds = 1.0 * 60;
 //const batchSize = 7;
@@ -51,13 +53,14 @@ import { Keybind, Space } from "./components";
 namespace _GrindStudySession {
     export interface Props {
         sessionName: string;
-        initCards: Card[];
+        initCardIDs: number[];
         onQuit: Action;
         onAddMoreCards?: Action;
     }
     export function View(props: Props) {
-        const { initCards, onQuit } = props;
+        const { initCardIDs, onQuit } = props;
         const [actions] = useAtom(appState.actions);
+        const [allCardMap] = useAtom(appState.allCardMap);
         const [remind, setRemind] = useState(true);
         const [cards, setCards] = useState<Card[]>([]);
         const [breakTime, setBreakTime] = useState(false);
@@ -108,11 +111,8 @@ namespace _GrindStudySession {
                 c.path !== updatedCard.path ? c : updatedCard,
             );
 
-            //refs.state.elapsed = elapsed;
-            //refs.state.cardStatsMap = getCardStats(updatedCards);
-
             setCards(updatedCards);
-            actions.updateDrillCard(updatedCard);
+            //actions.updateCard(updatedCard);
 
             PersistentState.save({
                 counter: refs.counter,
@@ -138,7 +138,7 @@ namespace _GrindStudySession {
                 onBreakTime();
             }
 
-            await sleep(100);
+            await sleep(50);
             await flipper.current?.flipIn();
             setLoading(false);
         }
@@ -223,19 +223,20 @@ namespace _GrindStudySession {
                 //refs.secondsElapsed = savedState.elapsed;
             }
 
-            setCards(initCards);
+            const cards = initCardIDs.map((id) => getCard(id, allCardMap));
+            setCards(cards);
 
             const { item: card, nextCounter } = ShortAlternating.nextDue(
                 refs.counter,
                 refs.batchSize,
-                initCards,
+                cards,
             );
             if (card) {
                 setCardID(card.id);
             }
 
             refs.counter = nextCounter;
-            refs.batchSize = Math.min(refs.batchSize, initCards.length);
+            refs.batchSize = Math.min(refs.batchSize, initCardIDs.length);
         };
 
         useOnMount(initialize);
@@ -261,6 +262,7 @@ namespace _GrindStudySession {
         */
 
         const currentCard = OrderedSet.get(cards, cardID);
+
         let body = <div />;
         if (remind) {
             body = <Reminders onSubmit={() => setRemind(false)} />;
@@ -276,6 +278,7 @@ namespace _GrindStudySession {
                     )}
                     {!breakTime && (
                         <ProficiencyTrial
+                            key={currentCard.id}
                             card={currentCard}
                             otherCards={cards}
                             onSubmit={onSubmit}
@@ -481,6 +484,7 @@ namespace _GrindStudySession {
         card = ShortAlternating.studyCard(card, trial, recalled);
         card.lastUpdate = Math.floor(Date.now() / 1000);
         card.counter = counter;
+
         await app.PersistCardStats(card);
 
         return card;

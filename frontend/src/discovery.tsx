@@ -10,8 +10,10 @@ import {
     createPair,
     currentDate,
     OrderedSet,
+    parseZodFromLocalStorage,
     partition,
     randomElem,
+    setToArray,
     shuffle,
     sleep,
     timeToDate,
@@ -37,18 +39,25 @@ import {
     Tag,
     Tooltip,
     Animation,
+    Divider,
 } from "./shoelace";
-import { boolean, z } from "zod";
+import { boolean, number, z } from "zod";
 import { produce, enableMapSet } from "immer";
-import { canPlayAudio } from "./DeckAudio";
+import { canPlayAudio, DeckAudio } from "./DeckAudio";
 import { Keybind, Space, Tick } from "./components";
 import { config } from "./config";
 import { PreviousSessionCardIDs } from "../wailsjs/go/main/App";
 import { CardFilter$ } from "./playground";
-import { useChanged, useOnMount, usePreviousSessionIDs, useSomeChanged } from "./hooks";
+import {
+    useChanged,
+    useDrillCards,
+    useOnMount,
+    usePreviousSessionIDs,
+    useSomeChanged,
+} from "./hooks";
 import { Flipper, Flipper$ } from "./App";
 
-//enableMapSet();
+enableMapSet();
 
 /*
 function useReviewingCards(deckName?: string) {
@@ -141,6 +150,34 @@ function TestInterval() {
 }
 
 export namespace SequentRecap$ {
+    namespace DeferredCards {
+        const lsKey = "sequent-deferred-cards";
+        export const schema = z.object({
+            cardIDs: z.array(z.number()),
+            date: z.number(),
+        });
+        export type T = z.infer<typeof schema>;
+
+        export function createDefault(): T {
+            return {
+                cardIDs: [],
+                date: config().currentDate,
+            };
+        }
+
+        export function load(): T {
+            const defaultValue = createDefault();
+            const val = parseZodFromLocalStorage(schema, lsKey) ?? defaultValue;
+            if (val.date != config().currentDate) {
+                return defaultValue;
+            }
+            return val;
+        }
+        export function save(val: T) {
+            localStorage.setItem(lsKey, JSON.stringify(val));
+        }
+    }
+
     namespace Options {
         const lsKey = "sequent-recap";
 
@@ -184,7 +221,9 @@ export namespace SequentRecap$ {
         factor: null as FactorID | null,
         countdown: 10,
         showSettings: false,
+        showDetails: false,
         options: Options.defaultOptions,
+        deferredCards: new Set<number>([]),
         lastNotify: 0,
         lastSound: 0,
         lastShown: {} as Record<string, number | undefined>,
@@ -200,7 +239,7 @@ export namespace SequentRecap$ {
     export function View({ filter }: Props) {
         const [actions] = useAtom(appState.actions);
         const [allUserCards] = useAtom(appState.allUserCards);
-        const [drillCards, setDrillCards] = useAtom(appState.drillCards);
+        const [drillCards, setDrillCards] = useDrillCards();
         const [state, setState] = useState<RenderState>(defaultRenderState);
         const [filteredCards, setFilteredCards] = useState<main.CardData[]>([]);
 
@@ -231,12 +270,23 @@ export namespace SequentRecap$ {
         }
 
         function onNextCard($state: RenderState) {
+            DeckAudio.stop();
+            $state.lastSound = 0;
             updateNextCard($state, filteredCards);
         }
 
-        async function onHuh() {
+        async function onHuh(card: Card | null) {
             await flipper.current?.flipOut();
-            update((s) => onNextCard(s));
+            update((s) => {
+                if (card) {
+                    s.deferredCards.add(card.id);
+                    DeferredCards.save({
+                        cardIDs: setToArray(s.deferredCards),
+                        date: config().currentDate,
+                    });
+                }
+                onNextCard(s);
+            });
             await flipper.current?.flipIn();
         }
 
@@ -255,7 +305,17 @@ export namespace SequentRecap$ {
             await flipper.current?.flipIn();
         }
 
-        function onLearnCard(card: Card) {}
+        function onLearnCard(card: Card) {
+            if (card.numForget + card.numRecall > 0) return;
+            const updated: Card = {
+                ...card,
+                numRecall: 1,
+                numForget: 1,
+            };
+            actions.updateCardStat(updated);
+            update((s) => (s.currentCard = updated));
+            //onHuh();
+        }
 
         useInterval(1000, () => {
             update(($state) => {
@@ -271,9 +331,17 @@ export namespace SequentRecap$ {
             });
         });
 
-        const initialize = () => {
+        function refresh() {
+            DeferredCards.save(DeferredCards.createDefault());
+            initialize();
+        }
+        function initialize() {
+            const deferred = DeferredCards.load();
+            const deferredSet = new Set(deferred.cardIDs);
+
             console.log("initializing state");
             let rawCards = filter ? CardFilter$.filterCards(allUserCards, filter) : allUserCards;
+            //rawCards = rawCards.filter((c) => !deferredSet.has(c.id));
             rawCards = shuffleCards(rawCards, previousIDs);
             setFilteredCards(rawCards);
 
@@ -285,18 +353,16 @@ export namespace SequentRecap$ {
                 const options = Options.load();
                 $state.options = options;
                 $state.index = -1;
+                $state.deferredCards = deferredSet;
 
                 updateNextCard($state, rawCards);
             });
-        };
+        }
 
         useOnMount(initialize);
 
         if (useChanged(filter)) {
             initialize();
-        }
-        if (useChanged(drillCards)) {
-            actions.saveCards(drillCards);
         }
 
         const card = state.currentCard;
@@ -307,6 +373,14 @@ export namespace SequentRecap$ {
                     <ul>
                         <li>change filter settings</li>
                         <li>create more card files</li>
+                        <li>
+                            press
+                            <span>
+                                <Space />
+                                <Icon name="arrow-clockwise" />
+                            </span>
+                            refresh to view again the cards you skipped with "next"
+                        </li>
                     </ul>
                 </Container>
             );
@@ -352,9 +426,11 @@ export namespace SequentRecap$ {
                             <Button size="small" onClick={() => update((s) => (s.running = false))}>
                                 stop
                             </Button>
-                            <Button onClick={() => initialize()} size="small">
-                                <Icon slot="prefix" name="arrow-clockwise" />
-                            </Button>
+                            <Tooltip content="refresh">
+                                <Button onClick={() => refresh()} size="small">
+                                    <Icon slot="prefix" name="arrow-clockwise" />
+                                </Button>
+                            </Tooltip>
                             <Button
                                 onClick={() => update((s) => (s.showSettings = !s.showSettings))}
                                 size="small"
@@ -442,11 +518,15 @@ export namespace SequentRecap$ {
                     </Flex>
                 </CardBox>
 
-                <Details summary="see details">
-                    <FactorDetails card={card} except={state.factor} />
-                </Details>
-
                 <br />
+                <br />
+                {state.showDetails && (
+                    <Block>
+                        <FactorDetails card={card} except={state.factor} />
+                        <Divider />
+                    </Block>
+                )}
+
                 <lt.Row justifyContent={"center"} direction={"column"}>
                     <Flipper
                         ref={flipper}
@@ -479,10 +559,19 @@ export namespace SequentRecap$ {
                     </Flipper>
 
                     <br />
+                    <Keybind keyName="ArrowUp">
+                        <Button
+                            size="small"
+                            outline
+                            onClick={() => update((s) => (s.showDetails = !s.showDetails))}
+                        >
+                            ↑ {state.showDetails ? "hide" : "show"} details
+                        </Button>
+                    </Keybind>
                     <Flex>
-                        <Keybind keyName="ArrowLeft">
+                        <Keybind keyName="ArrowLeft" placement="bottom">
                             <Button
-                                size="large"
+                                size="medium"
                                 variant={Card.isNew(card) ? "success" : "warning"}
                                 onClick={() => onAdd(card)}
                             >
@@ -492,15 +581,18 @@ export namespace SequentRecap$ {
                         </Keybind>
                         <Block mx={Shoe.spacing_medium}>??</Block>
                         <Keybind keyName="ArrowRight">
-                            <Button variant="neutral" onClick={onHuh} size="large">
+                            <Button variant="neutral" onClick={() => onHuh(card)} size="medium">
                                 next <Icon name="arrow-right" />
                             </Button>
                         </Keybind>
                     </Flex>
-                    <br />
-                    <Button outline size="small" onClick={() => onLearnCard(card)}>
-                        mark as reviewing
-                    </Button>
+                    {Card.isNew(card) && (
+                        <Keybind keyName="ArrowDown">
+                            <Button outline size="small" onClick={() => onLearnCard(card)}>
+                                ↓ mark as reviewing
+                            </Button>
+                        </Keybind>
+                    )}
                 </lt.Row>
             </Container>
         );
@@ -612,6 +704,7 @@ export namespace SequentRecap$ {
 
             if (!card) continue;
             if (state.addedCards[card.id]) continue;
+            if (state.deferredCards.has(card.id)) continue;
 
             let factor: FactorID = "meaning";
             if (options.factor === "auto") {
@@ -632,8 +725,6 @@ export namespace SequentRecap$ {
                     continue;
                 }
             }
-            /*
-             */
 
             return ret;
         }
