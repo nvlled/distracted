@@ -1,39 +1,28 @@
 import { marked } from "marked";
 import { useAtom } from "jotai";
-import { memo, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, ReactNode, useRef, useState } from "react";
 import styled from "styled-components";
 import { app, main } from "./api";
 import { Card } from "./card";
 import { Factor, FactorID } from "./factors";
 import { Block, Flex, lt } from "./layout";
 import {
-    createPair,
-    currentDate,
-    OrderedSet,
     parseZodFromLocalStorage,
     partition,
     randomElem,
     setToArray,
     shuffle,
-    sleep,
-    timeToDate,
     tryJSONParse,
-    useAsyncEffect,
-    useInterval,
-    yesterDate,
 } from "./lib";
 import { appState } from "./state";
-import { Ap2, Ap2$, AudioPlayer, AudioPlayer$ } from "./AudioPlayer";
+import { AudioPlayer, AudioPlayer$ } from "./AudioPlayer";
 import {
     Badge,
     Button,
     CardBox,
     Checkbox,
-    Details,
     EventUtil,
     Icon,
-    RadioButton,
-    RadioGroup,
     Range,
     Shoe,
     Tag,
@@ -41,55 +30,17 @@ import {
     Animation,
     Divider,
 } from "./shoelace";
-import { boolean, number, z } from "zod";
+import { z } from "zod";
 import { produce, enableMapSet } from "immer";
 import { canPlayAudio, DeckAudio } from "./DeckAudio";
-import { Keybind, Space, Tick } from "./components";
+import { Keybind, Space } from "./components";
 import { config } from "./config";
-import { PreviousSessionCardIDs } from "../wailsjs/go/main/App";
 import { CardFilter$ } from "./playground";
-import {
-    useChanged,
-    useDrillCards,
-    useOnMount,
-    usePreviousSessionIDs,
-    useSomeChanged,
-} from "./hooks";
-import { Flipper, Flipper$ } from "./App";
+import { useChanged, useDrillCards, useOnMount, usePreviousSessionIDs, useInterval } from "./hooks";
+import { Flipper, Flipper$ } from "./Flipper";
+import { iterate as iterateLoadedCards } from "./loadedCards";
 
 enableMapSet();
-
-/*
-function useReviewingCards(deckName?: string) {
-    const [allCards, setAllCards] = useState<Card[]>([]);
-    const [cards, setCards] = useState<Card[]>([]);
-    const [drillCards] = useAtom(appState.drillCards);
-
-    const fn = useCallback(async () => {
-        const cardData = await app.GetReviewingCards(deckName ?? "", -1);
-        setAllCards(cardData.map((c) => Card.parse(c)));
-    }, [deckName]);
-    useAsyncEffect(fn);
-
-    useEffect(() => {
-        const yester = yesterDate();
-        const today = currentDate();
-        const idSet = new Set(drillCards.map((c) => c.id));
-        const cards = allCards.filter((c) => {
-            if (c.lastRecallDate === today) return false;
-            if (idSet.has(c.id)) return false;
-            return true;
-        });
-        let [yesterdayCards, otherCards] = partition(cards, (c) => c.lastUpdate === yester);
-
-        yesterdayCards = shuffle(yesterdayCards);
-        otherCards = shuffle(otherCards);
-        setCards(yesterdayCards.concat(otherCards));
-    }, [allCards, drillCards]);
-
-    return createPair(cards, setCards);
-}
-*/
 
 function CardInfo({ card }: { card: Card }) {
     return (
@@ -129,23 +80,6 @@ function CardInfo({ card }: { card: Card }) {
                 </div>
             </Flex>
         </Block>
-    );
-}
-
-function TestInterval() {
-    const [index, setIndex] = useState(0);
-    const [count, setCount] = useState(0);
-
-    useInterval(1000, () => {
-        setCount((count) => count + 1);
-    });
-
-    return (
-        <div>
-            count={count}
-            <br />
-            index={index}
-        </div>
     );
 }
 
@@ -238,13 +172,12 @@ export namespace SequentRecap$ {
     }
     export function View({ filter }: Props) {
         const [actions] = useAtom(appState.actions);
-        const [allUserCards] = useAtom(appState.allUserCards);
         const [drillCards, setDrillCards] = useDrillCards();
         const [state, setState] = useState<RenderState>(defaultRenderState);
         const [filteredCards, setFilteredCards] = useState<main.CardData[]>([]);
 
         const flipper = useRef<Flipper$.Control | null>(null);
-        const audioPlayer = useRef<Ap2$.Control | null>(null);
+        const audioPlayer = useRef<AudioPlayer$.Control | null>(null);
         const previousIDs = usePreviousSessionIDs();
 
         type UpdateFn = (arg: RenderState) => void | unknown;
@@ -314,7 +247,6 @@ export namespace SequentRecap$ {
             };
             actions.updateCardStat(updated);
             update((s) => (s.currentCard = updated));
-            //onHuh();
         }
 
         useInterval(1000, () => {
@@ -340,8 +272,7 @@ export namespace SequentRecap$ {
             const deferredSet = new Set(deferred.cardIDs);
 
             console.log("initializing state");
-            let rawCards = filter ? CardFilter$.filterCards(allUserCards, filter) : allUserCards;
-            //rawCards = rawCards.filter((c) => !deferredSet.has(c.id));
+            let rawCards = filter ? CardFilter$.filterCards(iterateLoadedCards(), filter) : [];
             rawCards = shuffleCards(rawCards, previousIDs);
             setFilteredCards(rawCards);
 
@@ -544,7 +475,7 @@ export namespace SequentRecap$ {
                                         }}
                                     />
                                 ) : state.factor === "sound" ? (
-                                    <Ap2
+                                    <AudioPlayer
                                         src={card.factorData["sound"] ?? ""}
                                         ref={(ref) => (audioPlayer.current = ref)}
                                     />
@@ -608,7 +539,7 @@ export namespace SequentRecap$ {
                         {f === "meaning" || f === "text" ? (
                             <div>{card.factorData[f as FactorID]}</div>
                         ) : f === "sound" ? (
-                            <Ap2 src={card.factorData.sound ?? ""} />
+                            <AudioPlayer src={card.factorData.sound ?? ""} />
                         ) : null}
                     </div>
                 ))}
@@ -734,7 +665,11 @@ export namespace SequentRecap$ {
         return result;
     }
 
-    function tryPlaySound(state: RenderState, card: Card | null, audioPlayer: Ap2$.Control | null) {
+    function tryPlaySound(
+        state: RenderState,
+        card: Card | null,
+        audioPlayer: AudioPlayer$.Control | null,
+    ) {
         const { options, factor } = state;
 
         const now = Date.now();

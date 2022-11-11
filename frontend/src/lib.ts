@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { ZodRawShape } from "zod";
-import { app, cardEvents, main } from "./api";
+import { main } from "./api";
 import { Card } from "./card";
-import { useChanged, useOnMount, useOnUnmount } from "./hooks";
 
 export type MainPages = "intro" | "drill" | "home" | "prepare";
 
@@ -31,30 +29,6 @@ export async function handleError<T>(
 
 export function invoke(fn: () => void) {
     fn();
-}
-export function wrapAsyncEffect(fn: () => void) {
-    return () => {
-        fn();
-    };
-}
-
-export function useAsyncEffect(fn: () => void) {
-    useEffect(() => {
-        fn();
-    }, [fn]);
-}
-
-export function useAsyncEffectUnmount(fn: () => Promise<Action>) {
-    useEffect(() => {
-        let unmount: Action;
-        (async () => {
-            unmount = await fn();
-        })();
-
-        return () => {
-            unmount?.();
-        };
-    }, [fn]);
 }
 
 export function range(n: number): number[] {
@@ -133,26 +107,6 @@ export namespace Events {
         }
     }
 }
-
-/*
-export namespace MuxEvents {
-    export type Event = { name: string; data: unknown };
-
-    let commonEventName = "global";
-    let initialized = false;
-    const listeners = new Set<Action1<Event>>();
-
-    export function initialize() {
-        runtime.EventsOn(commonEventName, onEvent);
-        initialized = true;
-    }
-    function onEvent(data: any) {
-        for (const fn of listeners) {
-            fn(data);
-        }
-    }
-}
-*/
 
 export function between(n: number, a: number, b: number) {
     if (b < a) [a, b] = [b, a];
@@ -293,6 +247,7 @@ export function hasProp<K extends PropertyKey>(
     prop: K,
     type?: TypeOf,
 ): data is Record<K, unknown> {
+    if (!data) return false;
     if (type) {
         return prop in data && typeof data[prop] === type;
     }
@@ -421,43 +376,6 @@ export function getRelatedCharacters(str: string, count = 10): string[] {
 export function createPair<A, B>(a: A, b: B): [A, B] {
     return [a, b];
 }
-export function useCardWatch(cardInit: Card) {
-    const [card, setCard] = useState(cardInit);
-    useEffect(() => {
-        setCard(cardInit);
-        cardEvents.addListener((card) => {
-            setCard(card);
-        });
-        app.WatchCardFile(cardInit.path);
-        return () => {
-            app.UnwatchCardFile(cardInit.path);
-        };
-    }, [cardInit.path]);
-
-    return createPair(card, setCard);
-
-    /*
-    const [card, setCard] = useState(cardInit);
-
-    if (useChanged(card.id)) {
-        setCard(cardInit);
-    }
-
-    useOnMount(() => {
-        setCard(cardInit);
-        cardEvents.addListener(setCard);
-        app.WatchCardFile(cardInit.path);
-    });
-
-    useOnUnmount(() => {
-        app.UnwatchCardFile(cardInit.path);
-        cardEvents.removeListener(setCard);
-    });
-    */
-
-    return createPair(card, setCard);
-}
-
 export function partition<T>(xs: T[], p: (x: T) => boolean): [T[], T[]] {
     const left: T[] = [];
     const right: T[] = [];
@@ -466,20 +384,6 @@ export function partition<T>(xs: T[], p: (x: T) => boolean): [T[], T[]] {
         else right.push(x);
     }
     return [left, right];
-}
-
-// referred from https://overreacted.io/making-setinterval-declarative-with-react-hooks/
-export function useInterval(millis: number, fn: Action) {
-    const savedCallback = useRef<Action | null>();
-
-    useEffect(() => {
-        savedCallback.current = fn;
-    });
-
-    useEffect(() => {
-        let id = setInterval(() => savedCallback.current?.(), millis);
-        return () => clearInterval(id);
-    }, [millis]);
 }
 
 export function nop() {

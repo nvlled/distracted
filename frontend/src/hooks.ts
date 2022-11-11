@@ -1,17 +1,18 @@
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { app } from "./api";
+import { app, cardEvents } from "./api";
 import { Card } from "./card";
-import { Action, Action1, createPair, getCard, invoke } from "./lib";
+import { Action, Action1, createPair, invoke } from "./lib";
+import { getCardByID } from "./loadedCards";
 import { appState } from "./state";
 
 export function usePreviousSessionIDs() {
     const [ids, setIDs] = useState(new Set<number>());
-    useEffect(() => {
+    useOnMount(() => {
         invoke(async () => {
             setIDs(new Set(await app.PreviousSessionCardIDs()));
         });
-    }, []);
+    });
     return ids;
 }
 
@@ -75,7 +76,7 @@ export function useSomeChanged(...tuple: unknown[]) {
 
 export function useDrillCards() {
     const [ids, setIDs] = useAtom(appState.drillCardIDs);
-    const [cardMap] = useAtom(appState.allCardMap);
+    const [loadedCardsVersion] = useAtom(appState.loadedCardsVersion);
     const [cards, setCards] = useState<Card[]>([]);
 
     function updateCards(cards: Card[]) {
@@ -84,26 +85,26 @@ export function useDrillCards() {
         setIDs(newIDs);
     }
 
-    if (useSomeChanged(ids, cardMap)) {
-        setCards(ids.map((id) => getCard(id, cardMap)));
+    if (useSomeChanged(ids, loadedCardsVersion)) {
+        setCards(ids.map((id) => getCardByID(id)));
     }
 
     useOnMount(function () {
-        setCards(ids.map((id) => getCard(id, cardMap)));
+        setCards(ids.map((id) => getCardByID(id)));
     });
 
     return createPair(cards, updateCards);
 }
 
 export function useCards(ids: number[]): Card[] {
-    const [cardMap] = useAtom(appState.allCardMap);
+    const [loadedCardsVersion] = useAtom(appState.loadedCardsVersion);
     const [cards, setCards] = useState<Card[]>([]);
 
-    if (useSomeChanged(ids, cardMap)) {
-        setCards(ids.map((id) => getCard(id, cardMap)));
+    if (useSomeChanged(ids, loadedCardsVersion)) {
+        setCards(ids.map((id) => getCardByID(id)));
     }
     useOnMount(function () {
-        setCards(ids.map((id) => getCard(id, cardMap)));
+        setCards(ids.map((id) => getCardByID(id)));
     });
 
     return cards;
@@ -131,4 +132,34 @@ export function useKeyPress(keyName: string | "any", fn: Action1<string>) {
     useOnUnmount(() => {
         window.removeEventListener("keyup", handler);
     });
+}
+
+export function useCardWatch(cardInit: Card) {
+    const [card, setCard] = useState(cardInit);
+    useEffect(() => {
+        setCard(cardInit);
+        cardEvents.addListener((card) => {
+            setCard(card);
+        });
+        app.WatchCardFile(cardInit.path);
+        return () => {
+            app.UnwatchCardFile(cardInit.path);
+        };
+    }, [cardInit.path]);
+
+    return createPair(card, setCard);
+}
+
+// referred from https://overreacted.io/making-setinterval-declarative-with-react-hooks/
+export function useInterval(millis: number, fn: Action) {
+    const savedCallback = useRef<Action | null>();
+
+    useEffect(() => {
+        savedCallback.current = fn;
+    });
+
+    useEffect(() => {
+        let id = setInterval(() => savedCallback.current?.(), millis);
+        return () => clearInterval(id);
+    }, [millis]);
 }

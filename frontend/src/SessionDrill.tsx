@@ -1,33 +1,16 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import styled, { css } from "styled-components";
-import { main } from "../wailsjs/go/models";
+import { useRef, useState } from "react";
+import styled from "styled-components";
 import { Card } from "./card";
 import { FactorTrial } from "./factors";
 
-import {
-    Action,
-    currentDate,
-    getCard,
-    hasProp,
-    LocalStorageSerializer,
-    OrderedSet,
-    parseZodFromLocalStorage,
-    sleep,
-    useAsyncEffect,
-    useAsyncEffectUnmount,
-    useCardWatch,
-    useInterval,
-} from "./lib";
+import { Action, OrderedSet, parseZodFromLocalStorage, sleep } from "./lib";
 
 import { ProficiencyTrial } from "./trials";
 import * as app from "../wailsjs/go/main/App";
 import { TabOutDistraction } from "./distraction";
-import { AudioPlayer } from "./AudioPlayer";
 import { config } from "./config";
 import { ShortAlternating } from "./scheduler";
-import ReactMarkdown from "react-markdown";
 import {
-    Alert,
     Button,
     ButtonGroup,
     Divider,
@@ -41,16 +24,15 @@ import {
 import { Block, Flex } from "./layout";
 import { appState } from "./state";
 import { useAtom } from "jotai";
-import { Flipper, Flipper$, GrindSettings$ } from "./App";
-import { useCards, useChanged, useOnMount } from "./hooks";
+import { GrindSettings$ } from "./App";
+import { useChanged, useOnMount, useInterval } from "./hooks";
 import { z } from "zod";
 import { Keybind, Space } from "./components";
-import { current } from "immer";
+import { getCardByID } from "./loadedCards";
+import { Notes } from "./Notes";
+import { Flipper, Flipper$ } from "./Flipper";
 
-//const distractionSeconds = 1.0 * 60;
-//const batchSize = 7;
-
-namespace _GrindStudySession {
+namespace GrindStudySession$ {
     export interface Props {
         sessionName: string;
         initCardIDs: number[];
@@ -60,7 +42,7 @@ namespace _GrindStudySession {
     export function View(props: Props) {
         const { initCardIDs, onQuit } = props;
         const [actions] = useAtom(appState.actions);
-        const [allCardMap] = useAtom(appState.allCardMap);
+        const [loadedCardsVersion] = useAtom(appState.loadedCardsVersion);
         const [remind, setRemind] = useState(true);
         const [cards, setCards] = useState<Card[]>([]);
         const [breakTime, setBreakTime] = useState(false);
@@ -77,6 +59,7 @@ namespace _GrindStudySession {
             counter: 0,
             cardsReviewed: 0,
             secondsElapsed: 0,
+            changingCard: false,
 
             batchSize: 10,
             studyBatchDuration: options.studyBatchDuration,
@@ -98,12 +81,14 @@ namespace _GrindStudySession {
         }
 
         async function onSubmit(recalled: boolean, trial: FactorTrial) {
-            //await waitAnimation(() => setLoading(true));
-            await flipper.current?.reset();
-            await flipper.current?.flipOut();
-
             const currentCard = OrderedSet.get(cards, cardID);
             if (!currentCard) return;
+
+            if (refs.changingCard) return;
+            refs.changingCard = true;
+
+            await flipper.current?.reset();
+            await flipper.current?.flipOut();
 
             const elapsed = Math.min(refs.secondsElapsed, 60 * 5);
             const updatedCard = await studyCard(refs.counter, currentCard, trial, recalled);
@@ -112,7 +97,6 @@ namespace _GrindStudySession {
             );
 
             setCards(updatedCards);
-            //actions.updateCard(updatedCard);
 
             PersistentState.save({
                 counter: refs.counter,
@@ -141,15 +125,13 @@ namespace _GrindStudySession {
             await sleep(50);
             await flipper.current?.flipIn();
             setLoading(false);
+            refs.changingCard = false;
         }
 
         function onBreakTime() {
             setBreakTime(true);
             refs.cardsReviewed = 0;
 
-            //if (refs.batchSize < 20) {
-            //    refs.batchSize += 0.3;
-            //}
             updateDurations(options);
 
             refs.batchNum++;
@@ -215,15 +197,13 @@ namespace _GrindStudySession {
         }
 
         const initialize = function () {
-            //const state = (refs.state = SerializedState.load());
             const savedState = PersistentState.load();
             if (savedState && savedState.date == config().currentDate) {
                 refs.counter = savedState.counter;
                 refs.batchNum = savedState.batchNum;
-                //refs.secondsElapsed = savedState.elapsed;
             }
 
-            const cards = initCardIDs.map((id) => getCard(id, allCardMap));
+            const cards = initCardIDs.map((id) => getCardByID(id));
             setCards(cards);
 
             const { item: card, nextCounter } = ShortAlternating.nextDue(
@@ -232,6 +212,7 @@ namespace _GrindStudySession {
                 cards,
             );
             if (card) {
+                console.log({ card }, config().currentDate);
                 setCardID(card.id);
             }
 
@@ -247,19 +228,9 @@ namespace _GrindStudySession {
             }
         });
 
-        /*
-        const sharedOptions = GrindSettings$.Options.current;
-        if (useChanged(sharedOptions.breakTimeDuration)) {
-            const newOptions = GrindSettings$.Options.current;
-            setOptions({ ...options, breakTimeDuration: sharedOptions.breakTimeDuration });
-            refs.breakTimeDuration = newOptions.breakTimeDuration;
+        if (useChanged(loadedCardsVersion)) {
+            setCards(cards.map((c) => getCardByID(c.id)));
         }
-        if (useChanged(sharedOptions.studyBatchDuration)) {
-            const newOptions = GrindSettings$.Options.current;
-            setOptions({ ...options, studyBatchDuration: sharedOptions.studyBatchDuration });
-            refs.studyBatchDuration = newOptions.studyBatchDuration;
-        }
-        */
 
         const currentCard = OrderedSet.get(cards, cardID);
 
@@ -296,15 +267,6 @@ namespace _GrindStudySession {
 
         return (
             <div>
-                {/*
-                <small style={{ textAlign: "center" }}>
-                    study time: {refs.studyBatchDuration.toFixed(2)}
-                    <Space />
-                    |
-                    <Space />
-                    break time: {refs.breakTimeDuration.toFixed(2)}
-                </small>
-                */}
                 <Container isLoading={loading} ref={containerRef}>
                     <Flex>
                         <Buttons>
@@ -360,7 +322,6 @@ namespace _GrindStudySession {
     export const Container = styled.div<{ isLoading: boolean }>`
         padding: ${Shoe.spacing_small};
         position: relative;
-        /*transition: top 0.3s;*/
         top: ${(props) => (props.isLoading ? "-100vh" : "0")};
         min-height: 50vh;
     `;
@@ -376,25 +337,6 @@ namespace _GrindStudySession {
         justify-content: center;
     `;
 
-    type CardStatsMap = Record<number, main.CardStats | undefined>;
-
-    /*
-    function getCardStats(cards: Card[]) {
-        return cards.reduce((result, card) => {
-            result[card.id] = {
-                proficiency: card.proficiency,
-                consecForget: card.consecForget,
-                consecRecall: card.consecRecall,
-                interval: card.interval,
-                lastUpdate: card.lastUpdate,
-                numForget: card.numForget,
-                numRecall: card.numRecall,
-            };
-            return result;
-        }, {} as CardStatsMap);
-    }
-    */
-
     namespace PersistentState {
         export const schema = z.object({
             date: z.number(),
@@ -403,12 +345,14 @@ namespace _GrindStudySession {
             elapsed: z.number(),
         });
         type T = z.infer<typeof schema>;
-        const defaultVal: T = {
+
+        export const defaultVal: T = {
             date: config().currentDate,
             counter: 0,
             batchNum: 0,
             elapsed: 0,
         };
+
         const lsKey = "grind-session-state";
         export function load(): T | null {
             return parseZodFromLocalStorage(schema, lsKey);
@@ -418,72 +362,13 @@ namespace _GrindStudySession {
         }
     }
 
-    /*
-    namespace SessionState {
-        const statsSchema = z.object({
-            interval: z.number(),
-            proficiency: z.number(),
-            numRecall: z.number(),
-            numForget: z.number(),
-            consecRecall: z.number(),
-            consecForget: z.number(),
-            lastUpdate: z.number(),
-        });
-        export const schema = z.object({
-            date: z.number(),
-            counter: z.number(),
-            elapsed: z.number(),
-            cardStatsMap: z.record(z.number(), statsSchema),
-        });
-        type T = z.infer<typeof schema>;
-        const defaultVal: T = {
-            date: config().currentDate,
-            counter: 0,
-            elapsed: 0,
-            cardStatsMap: {},
-        };
-        const typeCheck: Record<number, main.CardStats> = defaultVal.cardStatsMap;
-    }
-
-    // wait, I don't think I'm even using this anymore since
-    // I persisted the state now on the db?
-    namespace SerializedState {
-        export const defaultState = () => ({
-            date: config().currentDate,
-            counter: 0,
-            elapsed: 0,
-            cardStatsMap: {} as CardStatsMap,
-        });
-        type T = ReturnType<typeof defaultState>;
-
-        const serializer = new LocalStorageSerializer(
-            defaultState(),
-            "grind-study-session",
-            isValidState,
-        );
-        function isValidState(obj: unknown): obj is T {
-            if (typeof obj !== "object") return false;
-            if (obj == null) return false;
-            if (!hasProp(obj, "date", "number")) return false;
-            if (!hasProp(obj, "counter", "number")) return false;
-            if (!hasProp(obj, "cardStatsMap", "object")) return false;
-
-            return true;
-        }
-        export function load() {
-            const state = serializer.load();
-            return state;
-        }
-        export function save(state: T) {
-            serializer.save(state);
-        }
-    }
-    */
-
     async function studyCard(counter: number, card: Card, trial: FactorTrial, recalled: boolean) {
         card = ShortAlternating.studyCard(card, trial, recalled);
         card.lastUpdate = Math.floor(Date.now() / 1000);
         card.counter = counter;
+        if (recalled) {
+            card.lastRecallDate = config().currentDate;
+        }
 
         await app.PersistCardStats(card);
 
@@ -496,7 +381,7 @@ namespace _GrindStudySession {
     }
 }
 
-export const GrindStudySession = _GrindStudySession.View;
+export const GrindStudySession = GrindStudySession$.View;
 
 function Reminders({ onSubmit }: { onSubmit: Action }) {
     return (
@@ -552,53 +437,3 @@ export namespace CardActions$ {
     const Container = styled.div``;
 }
 export const CardActions = CardActions$.View;
-
-export namespace Notes$ {
-    export interface Props {}
-    export function View({}: Props) {
-        const ref = useRef<TextareaRef>(null);
-
-        useAsyncEffectUnmount(async () => {
-            const textarea = ref.current;
-            if (textarea) textarea.value = await app.GetNotes();
-
-            return () => {
-                if (textarea) {
-                    app.SaveNotes(textarea.value);
-                }
-            };
-        });
-
-        return (
-            <Container>
-                <Textarea ref={ref} autofocus />
-            </Container>
-        );
-    }
-    const Container = styled.div`
-        &,
-        textarea {
-            height: 100%;
-        }
-        sl-textarea {
-            &,
-            ::part(form-control),
-            ::part(form-control-input),
-            ::part(base),
-            ::part(textarea) {
-                height: 100%;
-            }
-        }
-    `;
-}
-export const Notes = Notes$.View;
-
-// TODO:
-export namespace CardListEditor$ {
-    export interface Props {}
-    export function View({}: Props) {
-        return <Container></Container>;
-    }
-    const Container = styled.div``;
-}
-export const CardListEditor = CardListEditor$.View;

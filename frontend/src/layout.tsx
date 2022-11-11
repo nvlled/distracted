@@ -24,6 +24,7 @@ export namespace lt {
     export interface BlockProps {
         inline?: boolean | undefined;
         hide?: boolean | undefined;
+        invisible?: boolean | undefined;
         fw?: boolean | undefined;
 
         m?: string | number | undefined;
@@ -111,6 +112,8 @@ export const Flex = styled.div<lt.RowProps & lt.BlockProps>`
     flex-direction: ${(props) => props.direction ?? "row"};
     ${(props) => (props.fw ? "width: 100%;" : "")}
 
+    ${(props) => (props.invisible ? "visibility: hidden;" : "")}
+
     > * {
         ${(props) => entryPx("margin", props.cm)};
         ${(props) => entryPx("margin-left", props.cml ?? props.cmx)};
@@ -141,6 +144,7 @@ export const Flex = styled.div<lt.RowProps & lt.BlockProps>`
 export const Block = styled.div<lt.BlockProps>`
     display: ${(props) => (props.hide ? "none" : props.inline ? "inline-block" : "block")};
     ${(props) => (props.fw ? "width: 100%;" : "")}
+    ${(props) => (props.invisible ? "visibility: hidden;" : "")}
 
     > * {
         ${(props) => entryPx("margin", props.cm)};

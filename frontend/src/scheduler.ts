@@ -37,8 +37,8 @@ export namespace ShortAlternating {
         }
 
         //allDueItems.sort(orderByIntervalDesc);
-
         //const item = randomElem(allDueItems.slice(0, batchSize));
+
         const item = allDueItems[0];
         if (item) {
             return { item: item, nextCounter };
@@ -49,8 +49,12 @@ export namespace ShortAlternating {
     export function getDueCards<T extends Item>(cards: T[], counter: number, exceptID?: number) {
         return cards.filter((c) => {
             if (exceptID === c.id) return false;
-            //return c.interval <= 0 || Math.floor(counter % c.interval) === 0;
-            return c.interval <= 0 || Math.floor(counter - c.counter) >= c.interval;
+
+            return (
+                c.interval <= 0 ||
+                c.counter > counter ||
+                Math.floor(counter - c.counter) >= c.interval
+            );
         });
     }
 

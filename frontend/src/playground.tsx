@@ -26,6 +26,7 @@ import {
     Switch,
     Menu,
     RelativeTime,
+    DetailsRef,
 } from "./shoelace";
 import {
     ForwardedRef,
@@ -64,6 +65,7 @@ import { config } from "./config";
 import { useChanged, useDrillCards, useSomeChanged } from "./hooks";
 import { Factors } from "./factors";
 import { SlFormatDate } from "@shoelace-style/shoelace/dist/react";
+import { iterate as iterateLoadedCards } from "./loadedCards";
 
 namespace TimeSpan {
     export type Unit = z.infer<typeof unitSchema>;
@@ -108,7 +110,6 @@ export namespace Playground$ {
 
         const [collapseTabs, setCollapseTabs] = useState(false);
         const [actions] = useAtom(appState.actions);
-        const [allUserCards] = useAtom(appState.allUserCards);
 
         const [drillCards] = useDrillCards();
 
@@ -213,6 +214,8 @@ export namespace Playground$ {
             />
         );
 
+        const test = useRef<DetailsRef | null>(null);
+
         return (
             <Container>
                 <Details
@@ -228,8 +231,20 @@ export namespace Playground$ {
                     //onFocus={(e) => e.target.blur()}
                     className="details"
                     summary={`Cards for today (${drillCards.length})`}
-                    onSlShow={() => setShowAdded(true)}
+                    onSlShow={(e) => {
+                        e.preventDefault();
+                        setShowAdded(true);
+                    }}
                     onSlHide={() => setShowAdded(false)}
+                    onClick={(e) => {
+                        e.preventDefault();
+                        if (!test.current) return;
+                        const base = test.current.querySelector("::part(base)");
+                        console.log({ base });
+                        test.current.onkeyup = () => {};
+                        test.current.onkeydown = () => {};
+                    }}
+                    ref={test}
                 >
                     {addedContent}
                 </Details>
@@ -577,17 +592,17 @@ export namespace CardFilter$ {
         }
     `;
 
-    export function filterCards(cards: main.CardData[], options: Options): main.CardData[] {
+    export function filterCards(cards: Iterable<main.CardData>, options: Options): main.CardData[] {
         const customCardSet = new Set(options.customCards.data);
         const result: main.CardData[] = [];
 
         const { reviewCards } = options;
 
-        if (!options.decks.all) {
-            cards = cards.filter((c) => options.decks.data[c.deckName]);
-        }
-
         for (const card of cards) {
+            if (!options.decks.all && !options.decks.data[card.deckName]) {
+                continue;
+            }
+
             const isCustom = options.customCards.enabled && customCardSet.has(card.path);
             const isNew = options.newCards && Card.isNew(card);
             const isReview = reviewCards.enabled && reviewCards.all && Card.isReviewing(card);
@@ -865,7 +880,6 @@ export namespace SelectedCards$ {
     }
     export function View({ onSubmit /*sortType = "added", desc = false*/ }: Props) {
         const [actions] = useAtom(appState.actions);
-        const [allUserCards] = useAtom(appState.allUserCards);
         const [sort, setSort] = useAtom(appState.drillSort);
         const [editing, setEdit] = useState(false);
         const [hasError, setHasError] = useState(false);
@@ -894,9 +908,13 @@ export namespace SelectedCards$ {
                 const lines = text.split("\n").filter((l) => Boolean(l.trim()));
                 const set = new Set(lines);
                 const cardMap = new Map<string, Card>();
-                const filtered = allUserCards
-                    .filter((c) => set.has(c.path))
-                    .map((c) => Card.parse(c));
+
+                const filtered: Card[] = [];
+                for (const c of iterateLoadedCards()) {
+                    if (set.has(c.path)) {
+                        filtered.push(Card.parse(c));
+                    }
+                }
 
                 for (const c of filtered) {
                     cardMap.set(c.path, c);

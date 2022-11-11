@@ -2,9 +2,9 @@ import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import styled from "styled-components";
 import { app } from "./api";
-import { Ap2, AudioPlayer } from "./AudioPlayer";
+import { AudioPlayer } from "./AudioPlayer";
 import { Card } from "./card";
-import { useCardWatch } from "./lib";
+import { useCardWatch } from "./hooks";
 import { Divider } from "./shoelace";
 
 export namespace CardView$ {
@@ -37,7 +37,9 @@ export namespace CardView$ {
                             if (href === "sound" || href == "audio") {
                                 const a = (
                                     <>
-                                        <Ap2 src={Card.getUrlPath(card.deckName, content)} />
+                                        <AudioPlayer
+                                            src={Card.getUrlPath(card.deckName, content)}
+                                        />
                                     </>
                                 );
                                 return a;

@@ -40,14 +40,6 @@ describe("ShortAlternating", () => {
         }
         console.log(cards.map((c) => c.id));
 
-        // this looks fine
-        // with 50 cards and 50 batches,
-        // all cards gets a chance to be seen
-        // and the difficult ones appear more often
-        // and the easier ones appear less and less more often
-        // and the algorithm still works well with few cards
-        // yeah this should be fine for now
-
         const lines: string[] = [];
         for (let batch = 0; batch < 50; batch++) {
             const line = [`b=${batch}, c=${counter}`.padEnd(20)];

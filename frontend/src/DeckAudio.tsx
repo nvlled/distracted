@@ -1,7 +1,7 @@
-import { ChangeEvent, useEffect, useState } from "react";
+import { useState } from "react";
 import styled from "styled-components";
 import { Card } from "./card";
-import { lt } from "./layout";
+import { useChanged, useOnMount } from "./hooks";
 import { Action, LocalStorageSerializer, sleep } from "./lib";
 import { Range, RangeRef, Shoe } from "./shoelace";
 
@@ -28,7 +28,6 @@ const DeckAudioVolumeContainer = styled.div<{ warning: boolean; danger: boolean 
 `;
 export function DeckAudioVolume({ src }: { src: string }) {
     const [volume, setVolume] = useState(1);
-    const [filename, setFilename] = useState("");
     function onChange(e: Event) {
         const volume = (e.target as RangeRef).value;
         setVolume(volume);
@@ -42,7 +41,17 @@ export function DeckAudioVolume({ src }: { src: string }) {
         serializer.save(DeckAudio._volumes);
         DeckAudio.play(src);
     }
-    useEffect(() => {
+
+    if (useChanged(src)) {
+        const volume = DeckAudio._volumes[src];
+        if (volume !== undefined) {
+            setVolume(volume);
+        } else {
+            setVolume(1);
+        }
+    }
+
+    useOnMount(() => {
         DeckAudio._init();
         const volume = DeckAudio._volumes[src];
         if (volume !== undefined) {
@@ -51,8 +60,7 @@ export function DeckAudioVolume({ src }: { src: string }) {
             setVolume(1);
         }
         const fs = src.split("/");
-        setFilename(fs[fs.length - 1]);
-    }, [src]);
+    });
 
     return (
         <DeckAudioVolumeContainer warning={volume > 1.2 && volume < 2} danger={volume >= 2}>
@@ -104,7 +112,6 @@ export const DeckAudio = {
         const audio = DeckAudio._audio;
         audio.muted = true;
 
-        //source = ctx.createMediaElementSource(audio);
         const source = new MediaElementAudioSourceNode(ctx, {
             mediaElement: audio,
         });
@@ -202,42 +209,6 @@ export const DeckAudio = {
             audio.load();
         });
     },
-
-    /*
-    async playFirst(card: Card): Promise<void> {
-        const audio = DeckAudio._audio;
-        const base = config.baseUrlDecks;
-
-        const audioFile = card.front.contents?.filter(
-            (e) => typeof e !== "string" && e.name === "audio",
-        )[0] as Entry;
-
-        if (!audioFile) return;
-
-        for (const f of audioFile.value?.split(",")?.map((f) => f.trim()) ?? []) {
-            audio.src = `${base}/${card.deckName}/${decodeURI(f)}`;
-            audio.load();
-            await playAudio(audio);
-        }
-    },
-    async playAllAudio(card: Card, config: main.Config): Promise<void> {
-        const audio = DeckAudio._audio;
-        const base = config.baseUrlDecks;
-
-        const audioFiles = card.front.contents?.filter(
-            (e) => typeof e !== "string" && e.name === "audio",
-        ) as Entry[];
-
-        for (const audioFile of audioFiles) {
-            for (const f of audioFile.value.split(",").map((f) => f.trim())) {
-                audio.src = `${base}/${card.deckName}/${decodeURI(f)}`;
-                audio.load();
-                await playAudio(audio);
-            }
-            await sleep(1.5);
-        }
-    },
-    */
 };
 
 let canPlay = false;
@@ -250,5 +221,3 @@ function onWindowClick() {
     window.removeEventListener("click", onWindowClick);
 }
 window.addEventListener("click", onWindowClick);
-
-//DeckAudio._init();

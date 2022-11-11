@@ -342,6 +342,14 @@ func (self *App) GetCardFromSession(path string, session string) (*CardData, err
 		row.Md5sum, _ = GetMd5Sum(bytes)
 	}
 
+	date := self.CurrentDate()
+	interval := row.Interval
+	counter := row.Counter
+	if row.LastRecallDate != date {
+		interval = 0
+		counter = 0
+	}
+
 	card := CardData{
 		ID:             row.ID,
 		Filename:       filepath.Base(path),
@@ -352,14 +360,14 @@ func (self *App) GetCardFromSession(path string, session string) (*CardData, err
 		LastRecallDate: row.LastRecallDate,
 
 		CardStats: CardStats{
-			Interval:     row.Interval,
+			Interval:     interval,
 			Proficiency:  row.Proficiency,
 			NumRecall:    row.NumRecall,
 			NumForget:    row.NumForget,
 			ConsecRecall: row.ConsecRecall,
 			ConsecForget: row.ConsecForget,
 			LastUpdate:   row.LastUpdate,
-			Counter:      row.Counter,
+			Counter:      counter,
 		},
 	}
 
@@ -560,8 +568,10 @@ func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, erro
 
 		// reset interval on the next study date
 		interval := row.Interval
+		counter := row.Counter
 		if row.LastRecallDate != date {
 			interval = 0
+			counter = 0
 		}
 
 		card := CardData{
@@ -581,7 +591,7 @@ func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, erro
 				ConsecRecall: row.ConsecRecall,
 				ConsecForget: row.ConsecForget,
 				LastUpdate:   row.LastUpdate,
-				Counter:      row.Counter,
+				Counter:      counter,
 			},
 		}
 
@@ -817,6 +827,9 @@ func (self *App) DistractionModeOn() {
 }
 
 func (self *App) PersistCardStats(card *CardData) error {
+	if card.LastRecallDate == 0 {
+		card.LastRecallDate = self.CurrentDate()
+	}
 	cardsRow := struct {
 		ID   int64  `db:"id"`
 		Path string `db:"path"`

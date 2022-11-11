@@ -23,44 +23,26 @@ const actions = {
     setDrawer: (options: AppDrawerOptions, content: ReactNode) => {},
     showGrindSettings: (_: (options: GrindSettings$.Options.T) => void) => {},
     toastInfo: (message: string, options?: ToastOptions) => {},
-    updateCard: (card: Card) => {},
+
     updateCardStat: async (card: Card) => {},
 
     addDrillCard: (cardID: number) => {},
     removeDrillCard: (cardID: number) => {},
     updateDrillCards: (cards: Card[]) => {},
-
-    //saveCards: (cards: Card[]) => {},
 };
 export type AppActions = typeof actions;
 
 export const appState = {
-    audio: atom(new Audio()),
-    youtubeQueue: atom([] as { filename: string; link: string }[]),
     userData: atom(main.UserData.createFrom()),
     mainPage: atom("home" as MainPages),
 
     drillCardIDs: atom([] as number[]),
     drillPendingSave: atom(false),
-    //drillCards: atom([] as Card[]),
     drillSort: atom({ type: "added", desc: false } as CardSort.Sort),
 
-    allUserCards: atom([] as main.CardData[]),
-    allCardMap: atom(new Map<number, main.CardData | undefined>()),
-    /*
-    drillCards: Card[]
-    */
-
-    currentDrillCard: atom(null as Card | null),
-
-    // TODO: remove
-    deckFiles: atom({} as Record<string, main.CardFile[] | undefined>),
+    loadedCardsVersion: atom(0 as number),
 
     decks: atom([] as string[]),
-
-    currentCard: atom(undefined as Card | undefined),
-
-    distractionMode: atom(false),
 
     actions: atom(actions as AppActions),
 

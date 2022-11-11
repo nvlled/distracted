@@ -1,5 +1,4 @@
 import { marked } from "marked";
-import { date } from "zod";
 import { main } from "../wailsjs/go/models";
 import { config } from "./config";
 import { Factor, FactorData, FactorID, Factors, FactorTrial } from "./factors";
@@ -179,9 +178,6 @@ export const Card = {
         return Card.getReviewCount(card) > 0;
         //return Card.getPhase(card) === "review";
     },
-    //isLearning(card: main.CardData) {
-    //    return Card.getPhase(card) !== "review";
-    //},
     isRecalledTodayDeprecated(card: Card) {
         return card.lastRecallDate === currentDate();
     },
@@ -229,14 +225,7 @@ export const Card = {
     getPresentedFactor(card: Card, testedFactor: FactorID): FactorID {
         const factors = Factors.get(card.proficiency, card.availableFactors);
         factors[testedFactor] = null;
-        //if (card.consecRecall > 1) {
-        //    return Factors.getWeakestFactor(factors);
-        //}
-        //if (card.consecForget > 1) {
-        //    return Factors.getStrongestFactor(factors);
-        //}
         return Factors.getWeakestFactor(factors);
-        //return Factors.getRandom(factors);
     },
 
     getTrial(card: Card): FactorTrial {

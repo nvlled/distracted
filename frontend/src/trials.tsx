@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { Card } from "./card";
 import { FactorData, FactorID, Factors, FactorTrial } from "./factors";
-import { DeckAudio, DeckAudioVolume } from "./DeckAudio";
+import { DeckAudio } from "./DeckAudio";
 import { Block, Flex, lt } from "./layout";
 import {
     Action,
@@ -21,92 +21,12 @@ import {
     range,
     shuffle,
     sleep,
-    useCardWatch,
 } from "./lib";
-import { Ap2, Ap2$, AudioPlayer } from "./AudioPlayer";
+import { AudioPlayer$, AudioPlayer } from "./AudioPlayer";
 import { CardView } from "./CardView";
 import { Button, Divider, Shoe } from "./shoelace";
 import { Keybind } from "./components";
-
-/*
-
-AudioComponent {
-    useEffect(() => {
-        const handler = {
-            start: () => setState("playing")
-            stop: () => setState("stopped")
-        }
-        audioControl.register(src, handler)
-        return () => audioControl.unregister(src, handler)
-    }, [])
-}
-
-*/
-
-/*
-
-class MultiMap<K, V> {
-    private map: Map<K, V[]>;
-    constructor() {
-        this.map = new Map<K, V[]>();
-    }
-    get(key: K): Iterable<V> {
-        return this.map.get(key) ?? [];
-    }
-    add(key: K, value: V) {
-        if (!this.map.has(key)) {
-            this.map.set(key, [value]);
-        } else {
-            const items = this.map.get(key);
-            if (!items?.includes(value)) {
-                items?.push(value);
-            }
-        }
-    }
-    delete(key: K, value: V) {
-        const items = this.map.get(key);
-        if (!items) return;
-
-        const i = items.indexOf(value);
-        if (i !== undefined && i >= 0) {
-            items.splice(i, 1);
-        }
-        if (items.length === 0) {
-            this.map.delete(key);
-        }
-    }
-}
-
-namespace AudioController {
-    const handlerMap = new MultiMap<string, Handler>();
-
-    export interface Handler {
-        play: Action;
-        stop: Action;
-    }
-    export function play(...audioSrcs: string[]) {
-        for (const src of audioSrcs) {
-            const handlers = handlerMap.get(src);
-            for (const h of handlers) {
-                h.play();
-            }
-        }
-    }
-
-    export function stop(audioSrc: string) {
-        const handlers = handlerMap.get(audioSrc);
-        for (const h of handlers) {
-            h.stop();
-        }
-    }
-    export function register(audioSrc: string, handler: Handler) {
-        handlerMap.add(audioSrc, handler);
-    }
-    export function unregister(audioSrc: string, handler: Handler) {
-        handlerMap.delete(audioSrc, handler);
-    }
-}
-*/
+import { useCardWatch, useChanged, useOnMount } from "./hooks";
 
 namespace Observation$ {
     export interface Props {
@@ -119,8 +39,6 @@ namespace Observation$ {
     }
 
     export function View({ card, otherCards, tested, presented, onSubmit }: Props) {
-        //presented = "text";
-        //tested = "meaning";
         const [completed, setCompleted] = useState(false);
 
         function onMouseUp() {
@@ -199,7 +117,7 @@ namespace Observation$ {
 }
 export const Observation = Observation$.View;
 
-export namespace _ProficiencyTrial {
+export namespace ProficiencyTrial$ {
     export type State = "test" | "prompt" | "review";
     export interface Props {
         card: Card;
@@ -219,9 +137,10 @@ export namespace _ProficiencyTrial {
         });
         const [testNoise, setTestNoise] = useState("");
         const [recalled, setRecalled] = useState(false);
+        const [searchType, setSearchType] = useState(0);
 
-        const presentedAudio = useRef<Ap2$.Control>(null);
-        const testedAudio = useRef<Ap2$.Control>(null);
+        const presentedAudio = useRef<AudioPlayer$.Control>(null);
+        const testedAudio = useRef<AudioPlayer$.Control>(null);
 
         const actionButtonRef = useRef<HTMLDivElement | null>(null);
 
@@ -259,10 +178,6 @@ export namespace _ProficiencyTrial {
             const trial = Card.getTrial(card);
             setState(initialState);
 
-            //trial.observation = true; // !!!
-            //trial.presented = "sound";
-            //trial.tested = "text";
-
             const noise = otherCards
                 .map((c) => c.factorData[trial.tested] ?? "")
                 .filter((s) => !isPunctuation(s))
@@ -272,11 +187,7 @@ export namespace _ProficiencyTrial {
             setRecalled(false);
             setTestNoise(noise);
             setTrial(trial);
-
-            //if (trial.presented === "sound") {
-            //presentedAudio.current?.play();
-            //DeckAudio.play(card.factorData.sound ?? "");
-            //}
+            setSearchType(Math.random());
         }, [card]);
 
         if (trial.observation) {
@@ -291,8 +202,6 @@ export namespace _ProficiencyTrial {
                 />
             );
         }
-        /*
-         */
 
         const actionButton =
             state === "test" ? (
@@ -335,7 +244,7 @@ export namespace _ProficiencyTrial {
         } else if (presented === "sound") {
             presentedContent = (
                 <Keybind keyName=" ">
-                    <Ap2
+                    <AudioPlayer
                         key={card.factorData.sound ?? "presented-audio"}
                         //ref={presentedAudio}
                         ref={(ref) => {
@@ -353,20 +262,23 @@ export namespace _ProficiencyTrial {
             <div className="recall-info">{`${Factors.getIcon(tested)} recall ${tested}`}</div>
         );
         if (tested === "text") {
-            testedContent = (
-                <WordSearch
-                    text={card.factorData[tested] ?? ""}
-                    noise={testNoise}
-                    reveal={state != "test"}
-                />
-            );
+            testedContent =
+                searchType < 0.7 ? (
+                    <WordSearch
+                        text={card.factorData[tested] ?? ""}
+                        noise={testNoise}
+                        reveal={state != "test"}
+                    />
+                ) : (
+                    <ExampleSearch card={card} otherCards={otherCards} reveal={state != "test"} />
+                );
         } else if (state !== "test") {
             if (tested === "meaning") {
                 testedContent = <>{card.factorData[tested]}</>;
             } else if (tested === "sound") {
                 testedContent = (
                     <Keybind keyName=" ">
-                        <Ap2
+                        <AudioPlayer
                             key={card.factorData.sound ?? "tested-audio"}
                             ref={testedAudio}
                             src={card.factorData["sound"] ?? ""}
@@ -377,12 +289,7 @@ export namespace _ProficiencyTrial {
         }
 
         return (
-            <Container presented={presented}>
-                {/*card.audios.map((src) => (
-                    <DeckAudioVolume key={src} src={src} />
-                ))*/}
-                <Divider />
-
+            <Container presented={presented} testedBg={Factors.getColor(tested)}>
                 <Flex justifyContent={"start"}>
                     <em>
                         <small>{card.contextHint}</small>
@@ -413,7 +320,7 @@ export namespace _ProficiencyTrial {
         );
     }
 
-    const Container = styled.div<{ presented: FactorID }>`
+    const Container = styled.div<{ presented: FactorID; testedBg?: string }>`
         > .buttons {
             display: flex;
             flex-direction: column;
@@ -429,7 +336,7 @@ export namespace _ProficiencyTrial {
             min-height: 120px;
             display: flex;
             align-items: stretch;
-            justify-content: space-around;
+            justify-content: center;
 
             .presented,
             .tested {
@@ -438,12 +345,14 @@ export namespace _ProficiencyTrial {
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                padding: ${Shoe.spacing_small};
             }
             .presented {
                 font-size: ${(props) => (props.presented === "text" ? "3ch" : "2ch")};
             }
             .tested {
                 font-size: 2ch;
+                background: ${(props) => props.testedBg ?? "inherit"};
             }
 
             sl-divider {
@@ -462,7 +371,7 @@ export namespace _ProficiencyTrial {
     `;
 }
 export const ProficiencyTrial = memo(
-    _ProficiencyTrial.View,
+    ProficiencyTrial$.View,
     (prev, props) => prev.card.id === props.card.id,
 );
 
@@ -478,7 +387,6 @@ export const CardTrial = CardTrial$.View;
 
 export namespace ColorizeChar$ {
     export interface Settings {
-        //penSize: number;
         penScale: number;
         penColor: string;
         opacity: number;
@@ -513,10 +421,6 @@ export namespace ColorizeChar$ {
     const Canvas = memo(
         forwardRef(function ({ text, settings, fontSize, onUpdate }: CanvasProps, ref) {
             const { current: refs } = useRef({ ...initRefs });
-            //function onMountBackCanvas(canvas: HTMLCanvasElement) {
-            //    if (!canvas) return;
-            //    refs.canvasBuffer = canvas;
-            //}
             function onMountFrontCanvas(canvas: HTMLCanvasElement) {
                 if (!canvas) return;
                 refs.canvas = canvas;
@@ -535,13 +439,6 @@ export namespace ColorizeChar$ {
 
             return (
                 <CanvasContainer fontSize={fontSize}>
-                    {/*
-                    <canvas
-                        className="buffer"
-                        ref={onMountBackCanvas}
-                        onMouseDown={(e) => e.preventDefault()}
-                    />
-                    */}
                     <canvas
                         className="front"
                         ref={onMountFrontCanvas}
@@ -663,7 +560,6 @@ export namespace ColorizeChar$ {
         canvas.onmouseup = (e: MouseEvent) => {
             e.preventDefault();
             refs.mouseDown = false;
-            //drawPoint(getRelativePos(canvas, e), refs, settings);
             refs.prevPoint = null;
 
             //drawTextOutline(text, canvas, ctx);
@@ -673,7 +569,6 @@ export namespace ColorizeChar$ {
 
             refs.colorCount = countColor(canvas, ctx);
         };
-        //canvas.onmouseout = canvas.onmouseup;
 
         canvas.onmousedown = (e: MouseEvent) => {
             e.preventDefault();
@@ -710,7 +605,6 @@ export namespace ColorizeChar$ {
             ctx.fillRect(-size / 2, -size / 2, size, size);
 
             for (let i = 0; i < 1; i++) {
-                //ctx.fillStyle = "#f007";
                 const a = -size + Math.random() * size * 2;
                 const b = -size + Math.random() * size * 2;
                 const n = 0 + (Math.random() * size) / 8;
@@ -722,16 +616,6 @@ export namespace ColorizeChar$ {
             }
         }
         ctx.restore();
-
-        //ctx.beginPath();
-        //ctx.arc(pos.x, pos.y, size / 2, 0, Math.PI * 2);
-        //ctx.fill();
-
-        //ctx.lineWidth = size;
-        //ctx.beginPath();
-        //ctx.moveTo(pos.x, pos.y);
-        //if (prevPoint) ctx.lineTo(prevPoint.x, prevPoint.y);
-        //ctx.stroke();
 
         refs.prevPoint = pos;
     }
@@ -866,13 +750,6 @@ export namespace ColorizeText$ {
         const [expand, setExpand] = useState(false);
         const [, setLastUpdate] = useState(Date.now());
 
-        //const [settings, setSettings] = useState<ColorizeChar$.Settings>({
-        //    opacity: 1,
-        //    penColor: "red",
-        //    penScale: 1,
-        //    autoHide: false,
-        //});
-
         const { current: settings } = useRef({
             opacity: 1,
             penColor: "red",
@@ -936,11 +813,11 @@ export namespace ColorizeText$ {
             setLastUpdate(Date.now());
         }
 
-        useEffect(() => {
+        if (useChanged(text)) {
             setChars(text.split(""));
-        }, [text]);
+        }
 
-        useEffect(() => {
+        if (useChanged(settings)) {
             const state = controlStateSerializer.load();
             setPenColor(state.color);
             setFontSize(state.fontSize);
@@ -948,8 +825,7 @@ export namespace ColorizeText$ {
             settings.opacity = state.opacity;
             settings.penScale = state.penScale;
             settings.autoHide = state.autoHide;
-            // FIX?: refs dep
-        }, [settings]);
+        }
 
         return (
             <st.Container expand={expand}>
@@ -1216,6 +1092,38 @@ namespace SoundSearch$ {
 }
 export const SoundSearch = SoundSearch$.View;
 
+export namespace ExampleSearch$ {
+    export interface Props {
+        card: Card;
+        otherCards: Card[];
+        reveal: boolean;
+    }
+    export function View({ card, otherCards, reveal }: Props) {
+        const [examples, setExamples] = useState<string[]>([]);
+        useOnMount(() => {
+            const examples: string[] = [];
+            examples.push((card.examples[0] ?? card.factorData.text ?? "").replaceAll("**", ""));
+            for (const c of otherCards.slice(0, 10)) {
+                if (c.id === card.id) continue;
+                examples.push(...c.examples.map((s) => s.replaceAll("**", "")));
+            }
+            setExamples(shuffle(examples));
+        });
+        return (
+            <Container>
+                <Flex justifyContent={"center"} invisible={!reveal}>
+                    {card.factorData.text}
+                </Flex>
+                {examples.map((s) => (
+                    <span>{s}</span>
+                ))}
+            </Container>
+        );
+    }
+    const Container = styled.div``;
+}
+export const ExampleSearch = ExampleSearch$.View;
+
 namespace WordSearch$ {
     interface Props {
         text: string;
@@ -1263,16 +1171,14 @@ namespace WordSearch$ {
             <Container reveal={reveal}>
                 <div className="instructions">
                     Find at least one correct text{" "}
-                    {revealProp && (
-                        <>
-                            <Button size="small" onClick={() => init(textProp)}>
-                                shuffle
-                            </Button>
-                            <Button size="small" disabled={reveal} onClick={() => setReveal(true)}>
-                                show
-                            </Button>
-                        </>
-                    )}
+                    <Block invisible={!revealProp}>
+                        <Button size="small" onClick={() => init(textProp)}>
+                            shuffle
+                        </Button>
+                        <Button size="small" disabled={reveal} onClick={() => setReveal(true)}>
+                            show
+                        </Button>
+                    </Block>
                 </div>
                 <div className="text-block">
                     {refs.items.map((item, i) => (

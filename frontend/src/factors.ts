@@ -1,4 +1,5 @@
 import { randomElem } from "./lib";
+import { Shoe } from "./shoelace";
 
 export const FactorNumDigits = 2;
 
@@ -201,6 +202,18 @@ export const Factors = {
             case "sound":
                 return "🕪";
         }
+    },
+
+    getColor(factorID: FactorID) {
+        switch (factorID) {
+            case "text":
+                return Shoe.color_primary_100;
+            case "meaning":
+                return Shoe.color_success_100;
+            case "sound":
+                return Shoe.color_danger_100;
+        }
+        return Shoe.color_neutral_100;
     },
 
     /*
