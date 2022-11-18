@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/gen2brain/beeep"
+	"github.com/huandu/go-sqlbuilder"
 	"github.com/labstack/echo/v4"
 	"github.com/samber/lo"
 	"github.com/skratchdot/open-golang/open"
@@ -29,14 +29,13 @@ type App struct {
 	config   *Config
 	userData *UserData
 	dbAPI    *DBAPI
-
-	startHidden bool
+	devMode  bool
 
 	scheduler CardScheduler
 
 	distractions []DistractionFile
 
-	fileWatcher *fsnotify.Watcher
+	cardWatcher *CardWatcher
 
 	cardSearch *CardSearch
 
@@ -55,39 +54,34 @@ func NewApp() *App {
 	}
 	app.notifierID = 1
 	app.notifierIDs = map[int]*Notifier{}
-	app.LoadConfig()
 
 	return app
 }
 
-func (self *App) startup(ctx context.Context) {
-	self.ctx = ctx
-	self.InitDB()
-	self.userData.Load()
-	self.config.LastReviewDate = self.LastReviewDate()
-
-	if self.startHidden {
+func (app *App) startup(ctx context.Context) {
+	if app.devMode {
 		runtime.Hide(ctx)
 	}
 
-	runtime.LogSetLogLevel(ctx, logger.INFO)
-	runtime.WindowSetDarkTheme(self.ctx)
+	app.LoadConfig()
+	app.ctx = ctx
+	app.InitDB()
+	app.userData.Load()
+	app.config.LastReviewDate = app.LastReviewDate()
 
-	if !self.IsDataDirInitialized() {
-		self.InitDataDir()
+	runtime.LogSetLogLevel(ctx, logger.DEBUG)
+	runtime.WindowSetDarkTheme(app.ctx)
+
+	if !app.IsDataDirInitialized() {
+		app.InitDataDir()
 	}
 
-	if w, err := fsnotify.NewWatcher(); err != nil {
-		self.Error(err)
-	} else {
-		self.fileWatcher = w
-		go self.startFileWatcher()
-	}
+	app.initCardWatcher()
 
 }
 
-func (self *App) startNotifier(id int, seconds float64) {
-	notifier, ok := self.notifierIDs[id]
+func (app *App) startNotifier(id int, seconds float64) {
+	notifier, ok := app.notifierIDs[id]
 	if !ok || notifier == nil {
 		return
 	}
@@ -102,67 +96,64 @@ func (self *App) startNotifier(id int, seconds float64) {
 	}
 
 	for !notifier.stopped {
-		beeep.Notify("**** 12i3j123 yo", "yo it's study time again, get back here", "icon.png")
+		beeep.Notify("hello", "time to study again", "icon.png")
 		time.Sleep(10 * time.Second)
 	}
-	delete(self.notifierIDs, id)
+	delete(app.notifierIDs, id)
 }
 
-func (self *App) Notify(title, message string) {
+func (app *App) Notify(title, message string) {
 	beeep.Notify(title, message, "icon.png")
 }
 
-func (self *App) StartBreakTime(seconds float64) int {
-	id := self.notifierID
-	self.notifierID++
+func (app *App) StartBreakTime(seconds float64) int {
+	id := app.notifierID
+	app.notifierID++
 
-	self.notifierIDs[id] = &Notifier{false}
-	go self.startNotifier(id, seconds)
+	app.notifierIDs[id] = &Notifier{false}
+	go app.startNotifier(id, seconds)
 
 	return id
 }
 
-func (self *App) StopBreakTime(timerID int) {
-	notifier, ok := self.notifierIDs[timerID]
+func (app *App) StopBreakTime(timerID int) {
+	notifier, ok := app.notifierIDs[timerID]
 	if ok && notifier != nil {
 		notifier.stopped = true
 	}
 }
-func (self *App) ClearBreakTimeNotifiers() {
-	ns := self.notifierIDs
-	self.notifierIDs = map[int]*Notifier{}
+func (app *App) ClearBreakTimeNotifiers() {
+	ns := app.notifierIDs
+	app.notifierIDs = map[int]*Notifier{}
 	for _, n := range ns {
 		n.stopped = true
 	}
 }
 
-func (self *App) GetLastUsedCollection() string {
-	return self.dbAPI.GetDataString(UserDataKeys.LastUsedCollection)
+func (app *App) GetLastUsedCollection() string {
+	return app.dbAPI.GetDataString(UserDataKeys.LastUsedCollection)
 }
-func (self *App) SetLastUsedCollection(collectionName string) {
-	self.dbAPI.SetData(UserDataKeys.LastUsedCollection, collectionName)
+func (app *App) SetLastUsedCollection(collectionName string) {
+	app.dbAPI.SetData(UserDataKeys.LastUsedCollection, collectionName)
 }
 
-func (self *App) IsDataDirInitialized() bool {
-	if !DirectoryExists(self.ctx, self.config.UserDataDir) {
+func (app *App) IsDataDirInitialized() bool {
+	if !DirectoryExists(app.ctx, app.config.UserDataDir) {
 		return false
 	}
 
-	return self.dbAPI.GetDataBool(UserDataKeys.DataDirInitialized)
+	return app.dbAPI.GetDataBool(UserDataKeys.DataDirInitialized)
 }
 
-func (self *App) InitDataDir() {
-	config := self.config
+func (app *App) InitDataDir() {
+	config := app.config
 	Mkdir(config.DecksDir)
 	Mkdir(config.DistractionsDir)
-	CreateEmptyFile(self.ctx, config.UserInterestsFile)
-	CreateEmptyFile(self.ctx, config.UserSubredditsFile)
-	CreateEmptyFile(self.ctx, config.UserSubredditsFile)
-	self.dbAPI.SetData(UserDataKeys.DataDirInitialized, "1")
+	app.dbAPI.SetData(UserDataKeys.DataDirInitialized, "1")
 }
 
-func (self *App) GetStartingDecks() ([]string, error) {
-	entries, err := os.ReadDir(self.config.StartDecksDir)
+func (app *App) GetStartingDecks() ([]string, error) {
+	entries, err := os.ReadDir(app.config.StartDecksDir)
 	if err != nil {
 		return nil, err
 	}
@@ -177,15 +168,15 @@ func (self *App) GetStartingDecks() ([]string, error) {
 	return decks, nil
 }
 
-func (self *App) CompleteIntro() {
-	self.userData.IntroCompleted = true
-	self.dbAPI.SetData(UserDataKeys.IntroCompleted, true)
+func (app *App) CompleteIntro() {
+	app.userData.IntroCompleted = true
+	app.dbAPI.SetData(UserDataKeys.IntroCompleted, true)
 }
 
-func (self *App) CreateStartingDeck(deckName string, overwrite bool) (string, error) {
-	ctx := self.ctx
-	config := self.config
-	destPath := filepath.Join(self.config.DecksDir, deckName)
+func (app *App) CreateStartingDeck(deckName string, overwrite bool) (string, error) {
+	ctx := app.ctx
+	config := app.config
+	destPath := filepath.Join(app.config.DecksDir, deckName)
 
 	if yes, err := IsEmptyDirectory(destPath); err != nil {
 		return "", err
@@ -194,8 +185,8 @@ func (self *App) CreateStartingDeck(deckName string, overwrite bool) (string, er
 	}
 
 	srcPath := filepath.Join(config.StartDecksDir, deckName)
-	runtime.LogDebugf(self.ctx, "starting deck path: %v", srcPath)
-	if !DirectoryExists(self.ctx, srcPath) {
+	runtime.LogDebugf(app.ctx, "starting deck path: %v", srcPath)
+	if !DirectoryExists(app.ctx, srcPath) {
 		return "", errorList.Get().ErrInvalidStartingDeck
 	}
 
@@ -227,8 +218,8 @@ func (self *App) CreateStartingDeck(deckName string, overwrite bool) (string, er
 		return nil
 	})
 	if err != nil {
-		self.Error(err)
-		return "", errorList.ErrIOError
+		app.Error(err)
+		return "", errorList.ErrSysError
 	}
 
 	return deckName, nil
@@ -246,7 +237,7 @@ type Distraction struct {
 }
 
 // returns yyyymmdd
-func (self *App) CurrentDate() int64 {
+func (app *App) CurrentDate() int64 {
 	t := time.Unix(time.Now().Unix(), 0)
 	var y int64 = (int64)(t.Year())
 	var m int64 = (int64)(t.Month())
@@ -254,24 +245,24 @@ func (self *App) CurrentDate() int64 {
 	return d + m*100 + y*10000
 }
 
-func (self *App) StudyCard(sessionName string, cardpath string, recalled bool, seconds int) (*CardData, error) {
-	date := self.CurrentDate()
+func (app *App) StudyCard(sessionName string, cardpath string, recalled bool, seconds int) (*CardData, error) {
+	date := app.CurrentDate()
 
-	card, err := self.GetCardFromSession(cardpath, sessionName)
+	card, err := app.GetCard(cardpath)
 	if err != nil {
 		return nil, err
 	}
 
 	var updatedCard CardData
 	if recalled {
-		updatedCard = self.scheduler.Recalled(*card)
+		updatedCard = app.scheduler.Recalled(*card)
 	} else {
-		updatedCard = self.scheduler.Forgot(*card)
+		updatedCard = app.scheduler.Forgot(*card)
 	}
 
 	card = &updatedCard
 
-	if err = self.PersistCardStats(card); err != nil {
+	if err = app.PersistCardStats(card); err != nil {
 		return nil, err
 	}
 
@@ -280,17 +271,17 @@ func (self *App) StudyCard(sessionName string, cardpath string, recalled bool, s
 		"`studyDuration`        = `studyDuration` + $1 " +
 		"WHERE `name` = $2 and `date` = $3"
 
-	_, err = self.dbAPI.db.Exec(query, seconds, sessionName, date)
+	_, err = app.dbAPI.db.Exec(query, seconds, sessionName, date)
 	if err != nil {
-		self.Error(err)
-		return nil, errorList.ErrIOError
+		app.Error(err)
+		return nil, errorList.ErrSysError
 	}
 
 	return card, nil
 }
 
-func (self *App) CreateCardDBEntry(path string) (CardRow, error) {
-	filename := filepath.Join(self.config.DecksDir, path)
+func (app *App) CreateCardDBEntry(path string) (CardRow, error) {
+	filename := filepath.Join(app.config.DecksDir, path)
 	md5sum, _ := GetFileMd5Sum(filename)
 	row := CardRow{
 		Path:       path,
@@ -300,22 +291,14 @@ func (self *App) CreateCardDBEntry(path string) (CardRow, error) {
 	query := "" +
 		"INSERT INTO `cards` (`path`, `md5sum`, `lastUpdate`) " +
 		"VALUES (:path, :md5sum, :lastUpdate) "
-	_, err := self.dbAPI.db.NamedExec(query, &row)
+	_, err := app.dbAPI.db.NamedExec(query, &row)
 
 	return row, err
 }
 
-func (self *App) GetCard(path string) (*CardData, error) {
-	return self.GetCardFromSession(path, DefaultStudyName)
-}
-
-func (self *App) GetCardFromSession(path string, session string) (*CardData, error) {
-	if session == "" {
-		session = DefaultStudyName
-	}
-
+func (app *App) GetCard(path string) (*CardData, error) {
 	path = filepath.FromSlash(path)
-	filename := filepath.Join(self.config.DecksDir, path)
+	filename := filepath.Join(app.config.DecksDir, path)
 
 	bytes, err := ioutil.ReadFile(filename)
 	if err == os.ErrNotExist || err == os.ErrInvalid {
@@ -324,25 +307,27 @@ func (self *App) GetCardFromSession(path string, session string) (*CardData, err
 
 	var row CardRow
 
-	err = self.dbAPI.db.Get(
+	err = app.dbAPI.db.Get(
 		&row, "SELECT `ROWID` AS `id`, `md5sum`, `numRecall`, `numForget`, `consecRecall`, `consecForget`, `proficiency`, `lastUpdate`, `lastRecallDate`, `interval`, `counter` "+
 			"FROM `cards` WHERE `path` = ?", path,
 	)
 	if err != nil && err != sql.ErrNoRows {
-		self.Errorf("failed to query card: %v", err.Error())
-		return nil, errorList.ErrIOError
+		app.Errorf("failed to query card: %v", err.Error())
+		return nil, errorList.ErrSysError
 	}
 
 	if err == sql.ErrNoRows {
-		row, err = self.CreateCardDBEntry(path)
-		self.Error(err)
+		row = CardRow{
+			Path:       path,
+			LastUpdate: 0,
+		}
 	}
 
 	if row.Md5sum == "" {
 		row.Md5sum, _ = GetMd5Sum(bytes)
 	}
 
-	date := self.CurrentDate()
+	date := app.CurrentDate()
 	interval := row.Interval
 	counter := row.Counter
 	if row.LastRecallDate != date {
@@ -374,65 +359,17 @@ func (self *App) GetCardFromSession(path string, session string) (*CardData, err
 	return &card, nil
 }
 
-func (self *App) watchFile(filePath string) error {
-	return self.fileWatcher.Add(filePath)
-}
-
-func (self *App) UnwatchCardFile(cardpath string) error {
-	cardpath = filepath.FromSlash(cardpath)
-	filename := filepath.Join(self.config.DecksDir, cardpath)
-	return self.fileWatcher.Remove((filename))
-}
-
-func (self *App) WatchCardFile(cardpath string) error {
-	cardpath = filepath.FromSlash(cardpath)
-	filename := filepath.Join(self.config.DecksDir, cardpath)
-	return self.fileWatcher.Add((filename))
-}
-func (self *App) ClearWatchedFiles() error {
-	files := self.fileWatcher.WatchList()
-	for _, file := range files {
-		err := self.fileWatcher.Remove(file)
-		self.Error(err)
-	}
+func (app *App) SetTextEditor(textEditor string) error {
+	app.dbAPI.SetData(UserDataKeys.TextEditor, textEditor)
+	app.userData.TextEditor = textEditor
 	return nil
 }
 
-func (self *App) startFileWatcher() {
-	self.Debugf("starting file watcher")
-	for {
-		select {
-		case event, ok := <-self.fileWatcher.Events:
-			if !ok {
-				return
-			}
-			runtime.LogInfof(self.ctx, "file watcher event: %v", event)
-			if event.Op&fsnotify.Write == fsnotify.Write {
-				cardpath := GetCardPath(event.Name)
-				runtime.EventsEmit(self.ctx, "card-file-updated", cardpath)
-				runtime.LogInfof(self.ctx, "modified file: %v", cardpath)
-			}
-		case err, ok := <-self.fileWatcher.Errors:
-			if !ok {
-				self.Debugf("stopping file watcher")
-				return
-			}
-			self.Error(err)
-		}
-	}
-}
-
-func (self *App) SetTextEditor(textEditor string) error {
-	self.dbAPI.SetData(UserDataKeys.TextEditor, textEditor)
-	self.userData.TextEditor = textEditor
-	return nil
-}
-
-func (self *App) OpenCardFile(cardpath string) error {
+func (app *App) OpenCardFile(cardpath string) error {
 	cardpath = filepath.FromSlash(cardpath)
-	filename := filepath.Join(self.config.DecksDir, cardpath)
+	filename := filepath.Join(app.config.DecksDir, cardpath)
 
-	textEditor := self.dbAPI.GetDataString(UserDataKeys.TextEditor)
+	textEditor := app.dbAPI.GetDataString(UserDataKeys.TextEditor)
 	if textEditor != "" {
 		return open.RunWith(filename, textEditor)
 	}
@@ -448,7 +385,7 @@ func (self *App) OpenCardFile(cardpath string) error {
 	for _, textEditor := range editors {
 		err = open.RunWith(filename, textEditor)
 		if err == nil {
-			self.dbAPI.SetData(UserDataKeys.TextEditor, textEditor)
+			app.dbAPI.SetData(UserDataKeys.TextEditor, textEditor)
 			return nil
 		}
 	}
@@ -456,9 +393,9 @@ func (self *App) OpenCardFile(cardpath string) error {
 	return err
 }
 
-func (self *App) GetStudySessionsToday() ([]StudySession, error) {
+func (app *App) GetStudySessionsToday() ([]StudySession, error) {
 	var rows []StudySession
-	db := self.dbAPI.db
+	db := app.dbAPI.db
 	err := db.Select(
 		&rows,
 		"SELECT `name`, `date`, `startTime`, `studyDuration`, `type`, "+
@@ -467,7 +404,7 @@ func (self *App) GetStudySessionsToday() ([]StudySession, error) {
 			"ORDER BY `startTime` DESC")
 
 	if err != nil {
-		return nil, self.Error(err)
+		return nil, app.Error(err)
 	}
 	if rows == nil {
 		rows = []StudySession{}
@@ -476,9 +413,9 @@ func (self *App) GetStudySessionsToday() ([]StudySession, error) {
 	return rows, nil
 }
 
-func (self *App) GetDailyStudySession() (*StudySession, error) {
-	db := self.dbAPI.db
-	currentDate := self.CurrentDate()
+func (app *App) GetDailyStudySession() (*StudySession, error) {
+	db := app.dbAPI.db
+	currentDate := app.CurrentDate()
 	var row StudySession
 
 	err := db.Get(
@@ -490,7 +427,7 @@ func (self *App) GetDailyStudySession() (*StudySession, error) {
 		currentDate)
 
 	if err != nil && err != sql.ErrNoRows {
-		return nil, self.Error(err)
+		return nil, app.Error(err)
 	}
 
 	if err == sql.ErrNoRows {
@@ -513,27 +450,32 @@ func (self *App) GetDailyStudySession() (*StudySession, error) {
 	}
 
 	if err != nil {
-		return nil, self.Error(err)
+		return nil, app.Error(err)
 	}
 
 	return &row, nil
 }
 
-func (self *App) GetDailyStudyCards() ([]CardData, error) {
-	return self.GetStudySessionCardsToday(DefaultStudyName)
+func (app *App) GetDailyStudyCards() ([]CardData, error) {
+	return app.GetStudySessionCardsToday(DefaultStudyName)
 }
-func (self *App) GetDailyStudyCardIds() ([]int64, error) {
-	return self.GetStudySessionCardIDsToday(DefaultStudyName)
+func (app *App) GetDailyStudyCardIds() ([]int64, error) {
+	return app.GetStudySessionCardIDsToday(DefaultStudyName)
 }
 
-func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, error) {
-	date := self.CurrentDate()
-	db := self.dbAPI.db
+func (app *App) GetStudySessionCardsToday(sessionName string) ([]CardData, error) {
+	date := app.CurrentDate()
+	db := app.dbAPI.db
 
-	query := "SELECT `c`.`ROWID` AS `id`, `c`.`path`, `ssc`.`order`, " +
-		"`c`.`numRecall`, `c`.`numForget`, `c`.`consecRecall`, `c`.`consecForget`, `c`.`lastUpdate`, `c`.`proficiency`, `c`.`lastRecallDate`, `c`.`interval`, `c`.`counter` " +
-		"FROM `study_session_cards` `ssc` JOIN `cards` `c` ON `ssc`.`cardID` = `c`.`ROWID` JOIN `study_sessions` `sc` ON `sc`.`ROWID` = `ssc`.`sessionID` " +
-		"WHERE `sc`.`name` = $1 AND `sc`.`date` = $2 ORDER BY `ssc`.`order`, `c`.`ROWID` ASC"
+	b := sqlbuilder.NewSelectBuilder()
+	b.Select(b.As("c.ROWID", "id"), "c.path", "ssc.order")
+	b.Select("c.numRecall", "c.numForget", "c.consecRecall", "c.consecForget")
+	b.Select("c.lastUpdate", "c.proficiency", "c.lastRecallDate", "c.interval", "c.counter")
+	b.From(b.As("study_session_cards", "ssc")).
+		Join("cards c", "ssc.cardID = c.ROWID").
+		Join("study_sessions sc", "sc.ROWID = ssc.sessionID").
+		Where(b.Equal("sc.name", sessionName), b.Equal("sc.date", date)).
+		OrderBy("ssc.order", "c.ROWID").Asc()
 
 	type Row struct {
 		ID   int64  `db:"id"`
@@ -550,17 +492,19 @@ func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, erro
 		LastRecallDate int64   `db:"lastRecallDate"`
 		Counter        int64   `db:"counter"`
 	}
+
+	query, args := b.Build()
 	var rows []Row
-	err := db.Select(&rows, query, sessionName, date)
+	err := db.Select(&rows, query, args...)
 
 	if err != nil {
-		return nil, self.Error(err)
+		return nil, app.Error(err)
 	}
 
 	result := []CardData{}
 	for _, row := range rows {
 		path := filepath.FromSlash(row.Path)
-		filename := filepath.Join(self.config.DecksDir, path)
+		filename := filepath.Join(app.config.DecksDir, path)
 		bytes, err := ioutil.ReadFile(filename)
 		if err == os.ErrNotExist || err == os.ErrInvalid {
 			return nil, errorList.ErrInvalidCardPath
@@ -602,9 +546,9 @@ func (self *App) GetStudySessionCardsToday(sessionName string) ([]CardData, erro
 
 }
 
-func (self *App) GetStudySessionCardIDsToday(sessionName string) ([]int64, error) {
-	date := self.CurrentDate()
-	db := self.dbAPI.db
+func (app *App) GetStudySessionCardIDsToday(sessionName string) ([]int64, error) {
+	date := app.CurrentDate()
+	db := app.dbAPI.db
 
 	query := "SELECT `c`.`ROWID` AS `id` " +
 		"FROM `study_session_cards` `ssc` JOIN `cards` `c` ON `ssc`.`cardID` = `c`.`ROWID` JOIN `study_sessions` `sc` ON `sc`.`ROWID` = `ssc`.`sessionID` " +
@@ -617,7 +561,7 @@ func (self *App) GetStudySessionCardIDsToday(sessionName string) ([]int64, error
 	err := db.Select(&rows, query, sessionName, date)
 
 	if err != nil {
-		return nil, self.Error(err)
+		return nil, app.Error(err)
 	}
 
 	result := []int64{}
@@ -629,9 +573,9 @@ func (self *App) GetStudySessionCardIDsToday(sessionName string) ([]int64, error
 
 }
 
-func (self *App) GetDecks() ([]string, error) {
-	decksPath := self.config.DecksDir
-	if !DirectoryExists(self.ctx, decksPath) {
+func (app *App) GetDecks() ([]string, error) {
+	decksPath := app.config.DecksDir
+	if !DirectoryExists(app.ctx, decksPath) {
 		return []string{}, nil
 	}
 	entries := lo.Must(os.ReadDir(decksPath))
@@ -646,26 +590,26 @@ func (self *App) GetDecks() ([]string, error) {
 	return decks, nil
 }
 
-func (self *App) CreateStudySession(sessionName string, sessionType int, cardpaths []string) error {
-	date := self.CurrentDate()
+func (app *App) CreateStudySession(sessionName string, sessionType int, cardpaths []string) error {
+	date := app.CurrentDate()
 	//if len(cardpaths) == 0 {
 	//	return nil
 	//}
 
-	db := self.dbAPI.db
+	db := app.dbAPI.db
 
 	tx, err := db.Beginx()
 	if err != nil {
-		return self.Error(err)
+		return app.Error(err)
 	}
 	defer tx.Commit()
 
 	var currentID int64 = -1
 	if err := tx.Get(&currentID, "SELECT `ROWID` FROM `study_sessions` WHERE `name` = $1 AND `date` = $2", sessionName, date); err != nil && err != sql.ErrNoRows {
-		return self.Error(err)
+		return app.Error(err)
 	} else if err == nil && sessionName != DefaultStudyName {
 		fmt.Printf("huh: %v, %v\n", sessionName, DefaultStudyName)
-		return self.Error(errorList.ErrSessionNameAlreadyUsed)
+		return app.Error(errorList.ErrSessionNameAlreadyUsed)
 	}
 	alreadyExists := currentID >= 0
 
@@ -679,17 +623,17 @@ func (self *App) CreateStudySession(sessionName string, sessionType int, cardpat
 			sessionType,
 		)
 		if err != nil {
-			return self.Error(err)
+			return app.Error(err)
 		}
 		if id, err := res.LastInsertId(); err != nil {
-			return self.Error(err)
+			return app.Error(err)
 		} else {
 			sessionID = id
 		}
 	} else {
 		_, err := tx.Exec("DELETE FROM `study_session_cards` WHERE `sessionID` = $1", sessionID)
 		if err != nil {
-			return self.Error(err)
+			return app.Error(err)
 		}
 	}
 
@@ -699,36 +643,36 @@ func (self *App) CreateStudySession(sessionName string, sessionType int, cardpat
 			"(SELECT `c`.`ROWID` FROM `cards` `c` WHERE `c`.`path` = $2), " +
 			"$3")
 	if err != nil {
-		return self.Error(err)
+		return app.Error(err)
 	}
 
 	for i, c := range cardpaths {
 		_, err = stmt.Exec(sessionID, c, i+1)
 		if err != nil {
-			return self.Error(err)
+			return app.Error(err)
 		}
 	}
 
 	return nil
 }
 
-func (self *App) GetNotes() (string, error) {
-	notesPath := filepath.Join(self.config.UserDataDir, "notes.txt")
+func (app *App) GetNotes() (string, error) {
+	notesPath := filepath.Join(app.config.UserDataDir, "notes.txt")
 	bytes, err := ioutil.ReadFile(notesPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return "", self.Error(err)
+		return "", app.Error(err)
 	}
 	return string(bytes), nil
 }
-func (self *App) SaveNotes(notes string) error {
-	notesPath := filepath.Join(self.config.UserDataDir, "notes.txt")
+func (app *App) SaveNotes(notes string) error {
+	notesPath := filepath.Join(app.config.UserDataDir, "notes.txt")
 	err := ioutil.WriteFile(notesPath, []byte(notes), 0644)
-	return self.Error(err)
+	return app.Error(err)
 }
 
-func (self *App) ListCards(deck string) ([]CardFile, error) {
-	fullDeckPath := filepath.Join(self.config.DecksDir, string(deck))
-	if !DirectoryExists(self.ctx, fullDeckPath) {
+func (app *App) ListCards(deck string) ([]CardFile, error) {
+	fullDeckPath := filepath.Join(app.config.DecksDir, string(deck))
+	if !DirectoryExists(app.ctx, fullDeckPath) {
 		return []CardFile{}, nil
 	}
 	entries := lo.Must(os.ReadDir(fullDeckPath))
@@ -741,28 +685,61 @@ func (self *App) ListCards(deck string) ([]CardFile, error) {
 		}
 
 		cardPath := filepath.Join(deck, file.Name())
+		fullCardPath := filepath.Join(fullDeckPath, file.Name())
+
+		stat := lo.Must(os.Stat(fullCardPath))
 
 		cards = append(cards, CardFile{
 			Filename: filepath.Base(cardPath),
 			DeckName: filepath.Dir(cardPath),
 			Path:     cardPath,
+			ModTime:  stat.ModTime().Unix(),
 		})
 	}
 
 	return cards, nil
 }
 
-func (self *App) enumerateCards(deck string, returnError *error) chan *CardData {
+func (app *App) enumerateModifiedCards(lastCheck int64, returnError *error) chan *CardFile {
+	ch := make(chan *CardFile)
+
+	go func() {
+		for _, deck := range lo.Must(app.GetDecks()) {
+			filenames, err := app.ListCards(deck)
+
+			if err == nil {
+				for _, file := range filenames {
+					if lastCheck >= file.ModTime {
+						continue
+					}
+					if err != nil {
+						break
+					} else {
+						ch <- &file
+					}
+				}
+			}
+
+			if err != nil && returnError != nil {
+				*returnError = err
+			}
+		}
+
+		close(ch)
+	}()
+
+	return ch
+}
+
+func (app *App) enumerateCards(deck string, returnError *error) chan *CardData {
 	ch := make(chan *CardData)
 
 	go func() {
-		filenames, err := self.ListCards(deck)
-
-		self.Error(err)
+		filenames, err := app.ListCards(deck)
 
 		if err == nil {
 			for _, file := range filenames {
-				card, err := self.GetCard(file.Path)
+				card, err := app.GetCard(file.Path)
 				if err != nil {
 					break
 				} else {
@@ -781,54 +758,54 @@ func (self *App) enumerateCards(deck string, returnError *error) chan *CardData 
 	return ch
 }
 
-func (self *App) FindInvalidCardPaths(cardpaths []string) []string {
+func (app *App) FindInvalidCardPaths(cardpaths []string) []string {
 	nonExist := []string{}
 	for _, path := range cardpaths {
 		path = filepath.FromSlash(path)
-		filename := filepath.Join(self.config.DecksDir, path)
-		if !RegularFileExists(self.ctx, filename) {
+		filename := filepath.Join(app.config.DecksDir, path)
+		if !RegularFileExists(app.ctx, filename) {
 			nonExist = append(nonExist, path)
 		}
 	}
 	return nonExist
 }
 
-func (self *App) ManualExportType() *CardStats {
+func (app *App) ManualExportType() *CardStats {
 	// FIX: this is just a workaround since I don't
 	// know how to bind types without using them in a method
 	return nil
 }
 
-func (self *App) DistractionModeOff() {
-	runtime.WindowSetAlwaysOnTop(self.ctx, false)
-	runtime.WindowMaximise(self.ctx)
-	runtime.WindowCenter(self.ctx)
-	runtime.WindowFullscreen(self.ctx)
+func (app *App) DistractionModeOff() {
+	runtime.WindowSetAlwaysOnTop(app.ctx, false)
+	runtime.WindowMaximise(app.ctx)
+	runtime.WindowCenter(app.ctx)
+	runtime.WindowFullscreen(app.ctx)
 	time.Sleep(1500 * time.Millisecond)
-	runtime.WindowHide(self.ctx)
+	runtime.WindowHide(app.ctx)
 	time.Sleep(1500 * time.Millisecond)
-	runtime.WindowShow(self.ctx)
+	runtime.WindowShow(app.ctx)
 }
 
-func (self *App) DistractionModeOn() {
+func (app *App) DistractionModeOn() {
 	w := 300
 	h := 80
-	runtime.WindowSetAlwaysOnTop(self.ctx, true)
-	runtime.WindowUnfullscreen(self.ctx)
-	runtime.WindowUnmaximise(self.ctx)
-	runtime.WindowSetSize(self.ctx, w, h)
-	runtime.WindowSetMaxSize(self.ctx, w, h)
-	//for _, s := range lo.Must(runtime.ScreenGetAll(self.ctx)) {
+	runtime.WindowSetAlwaysOnTop(app.ctx, true)
+	runtime.WindowUnfullscreen(app.ctx)
+	runtime.WindowUnmaximise(app.ctx)
+	runtime.WindowSetSize(app.ctx, w, h)
+	runtime.WindowSetMaxSize(app.ctx, w, h)
+	//for _, s := range lo.Must(runtime.ScreenGetAll(app.ctx)) {
 	//	if s.IsPrimary && s.IsCurrent {
-	//		runtime.WindowSetPosition(self.ctx, 1, s.Height-h)
+	//		runtime.WindowSetPosition(app.ctx, 1, s.Height-h)
 	//		break
 	//	}
 	//}
 }
 
-func (self *App) PersistCardStats(card *CardData) error {
+func (app *App) PersistCardStats(card *CardData) error {
 	if card.LastRecallDate == 0 {
-		card.LastRecallDate = self.CurrentDate()
+		card.LastRecallDate = app.CurrentDate()
 	}
 	cardsRow := struct {
 		ID   int64  `db:"id"`
@@ -871,23 +848,31 @@ func (self *App) PersistCardStats(card *CardData) error {
 		"`counter`   = :counter " +
 		"WHERE `path` = :path"
 
-	_, err := self.dbAPI.db.NamedExec(query, &cardsRow)
+	_, err := app.dbAPI.db.NamedExec(query, &cardsRow)
 	if err != nil {
-		self.Error(err)
-		return errorList.ErrIOError
+		app.Error(err)
+		return errorList.ErrSysError
 	}
 
-	date := self.CurrentDate()
-	self.dbAPI.SetData(UserDataKeys.LastReviewDate, date)
+	date := app.CurrentDate()
+	app.dbAPI.SetData(UserDataKeys.LastReviewDate, date)
+
+	contents, err := ReplaceEmbeddedCardData(EmbeddedCardData{
+		Version:   CurrentEmbeddedVersion,
+		CardID:    card.ID,
+		CardStats: card.CardStats,
+	}, card.Contents)
+	filename := filepath.Join(app.config.DecksDir, card.Path)
+	ioutil.WriteFile(filename, []byte(contents), 0644)
 
 	return nil
 }
 
-func (self *App) GetReviewingCards(deckName string, count int) []*CardData {
+func (app *App) GetReviewingCards(deckName string, count int) []*CardData {
 	empty := []*CardData{}
-	decks, err := self.GetDecks()
+	decks, err := app.GetDecks()
 	if err != nil {
-		self.Error(err)
+		app.Error(err)
 		return empty
 	}
 
@@ -897,7 +882,7 @@ func (self *App) GetReviewingCards(deckName string, count int) []*CardData {
 			continue
 		}
 
-		for card := range self.enumerateCards(deck, &err) {
+		for card := range app.enumerateCards(deck, &err) {
 			if card.NumRecall+card.NumForget > 0 && card.LastUpdate > 0 {
 				result = append(result, card)
 			}
@@ -910,41 +895,43 @@ func (self *App) GetReviewingCards(deckName string, count int) []*CardData {
 	return result
 }
 
-func (self *App) ListAllCards() ([]*CardData, error) {
-	decks, err := self.GetDecks()
+func (app *App) ListAllCards() ([]*CardData, error) {
+	decks, err := app.GetDecks()
 	if err != nil {
-		return nil, self.Error(err)
+		return nil, app.Error(err)
 	}
-	var result []*CardData
+	result := []*CardData{}
+	debugf(app.ctx, "> GetDecks %+v", decks)
 	for _, deck := range decks {
-		for card := range self.enumerateCards(deck, &err) {
+		for card := range app.enumerateCards(deck, &err) {
 			result = append(result, card)
 		}
 		if err != nil {
-			return nil, self.Error(err)
+			return nil, app.Error(err)
 
 		}
 	}
+	debugf(app.ctx, "ListAllCards: %v", len(result))
 	return result, nil
 }
 
-func (self *App) LastReviewDate() int64 {
-	return int64(self.dbAPI.GetDataInt(UserDataKeys.LastReviewDate))
+func (app *App) LastReviewDate() int64 {
+	return int64(app.dbAPI.GetDataInt(UserDataKeys.LastReviewDate))
 }
 
-func (self *App) PreviousSessionCardIDs() ([]int64, error) {
-	currentDate := self.CurrentDate()
-	db := self.dbAPI.db
+func (app *App) PreviousSessionCardIDs() ([]int64, error) {
+	currentDate := app.CurrentDate()
+	db := app.dbAPI.db
 
 	lastSessionDate := 0
-	err := db.Get(&lastSessionDate, "SELECT MAX(`ss`.`date`) FROM `study_session_cards` `ssc` INNER JOIN `study_sessions` `ss` ON `ss`.`ROWID` = `ssc`.`sessionID` WHERE `ss`.`date` < $1", currentDate)
+	err := db.Get(&lastSessionDate, "SELECT COALESCE(MAX(`ss`.`date`), 0) FROM `study_session_cards` `ssc` INNER JOIN `study_sessions` `ss` ON `ss`.`ROWID` = `ssc`.`sessionID` WHERE `ss`.`date` < $1", currentDate)
 	if err != nil {
-		return nil, self.Error(err)
+		return nil, app.Error(err)
 	}
 	var rows []int64
 	err = db.Select(&rows, "SELECT `ssc`.`cardID` FROM `study_session_cards` `ssc` INNER JOIN `study_sessions` `ss` ON `ss`.`ROWID` = `ssc`.`sessionID` WHERE `ss`.`date` = $1 OR `ss`.`date` = $1-1", lastSessionDate)
 	if err != nil {
-		return nil, self.Error(err)
+		return nil, app.Error(err)
 	}
 	return rows, nil
 }

@@ -21,7 +21,7 @@ export async function load() {
 function getIndex(card: CardEntry): number {
     let index = indexCache.get(card.id);
     if (index === undefined) {
-        index = cards.findIndex((c) => c.id);
+        index = cards.findIndex((c) => c.id === card.id);
     }
     if (index === undefined) {
         index = cards.length;
@@ -38,12 +38,40 @@ export async function removeListener(fn: Listener) {
     listeners.delete(fn);
 }
 
-export async function update(card: Card) {
+export async function remove(cardPath: string) {
+    const index = cards.findIndex((c) => c.path === cardPath);
+    if (index >= 0 && index < cards.length) {
+        if (cards[index]) indexCache.delete(cards[index].id);
+        cards.splice(index, 1);
+    }
+}
+
+export async function update(card: Card, op: "WRITE" | "CREATE" | "REMOVE" | string) {
+    if (op == "REMOVE") return;
+
+    const newEntry: main.CardData = {
+        interval: card.interval,
+        proficiency: card.proficiency,
+        numRecall: card.numRecall,
+        numForget: card.numRecall,
+        consecRecall: card.consecRecall,
+        consecForget: card.consecForget,
+        lastUpdate: card.lastUpdate,
+        counter: card.counter,
+        id: card.id,
+        deckName: card.deckName,
+        filename: card.filename,
+        path: card.path,
+        contents: card.contents,
+        order: card.order,
+        lastRecallDate: card.lastRecallDate,
+    };
+
     const index = getIndex(card);
-    cards[index] = card;
+    cards[index] = newEntry;
 
     for (const fn of listeners) {
-        fn(card);
+        fn(cards[index]);
     }
 }
 

@@ -13,12 +13,15 @@ export namespace CardView$ {
     }
     export function View({ card: cardProp }: Props) {
         const [card] = useCardWatch(cardProp);
+        console.log("CardView.card", cardProp.filename);
+        console.log("useCardWatch ", card.filename);
+
         async function onFilenameClick() {
             await app.OpenCardFile(card.path);
         }
         return (
             <Container>
-                <CardFilename onClick={onFilenameClick}>{card.filename}</CardFilename>
+                <CardFilename onClick={onFilenameClick}>{card.path}</CardFilename>
                 <ReactMarkdown
                     components={{
                         hr({ node, ...props }) {
@@ -62,7 +65,8 @@ export namespace CardView$ {
     `;
 }
 
-export const CardView = memo(
-    CardView$.View,
-    (prev, props) => prev.card.contents === props.card.contents,
-);
+export const CardView = CardView$.View;
+//export const CardView = memo(
+//    CardView$.View,
+//    (prev, props) => prev.card.contents === props.card.contents,
+//);

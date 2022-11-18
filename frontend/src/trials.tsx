@@ -174,7 +174,7 @@ export namespace ProficiencyTrial$ {
             setRecalled(recalled);
         }
 
-        useEffect(() => {
+        useOnMount(() => {
             const trial = Card.getTrial(card);
             setState(initialState);
 
@@ -188,7 +188,11 @@ export namespace ProficiencyTrial$ {
             setTestNoise(noise);
             setTrial(trial);
             setSearchType(Math.random());
-        }, [card]);
+
+            if (trial.presented === "sound" && card.factorData.sound) {
+                DeckAudio.play(card.factorData.sound);
+            }
+        });
 
         if (trial.observation) {
             return (
@@ -247,11 +251,7 @@ export namespace ProficiencyTrial$ {
                     <AudioPlayer
                         key={card.factorData.sound ?? "presented-audio"}
                         //ref={presentedAudio}
-                        ref={(ref) => {
-                            if (trial.presented === "sound" && state === "test") {
-                                ref?.play();
-                            }
-                        }}
+                        ref={(ref) => {}}
                         src={card.factorData["sound"] ?? ""}
                     />
                 </Keybind>
@@ -1114,8 +1114,8 @@ export namespace ExampleSearch$ {
                 <Flex justifyContent={"center"} invisible={!reveal}>
                     {card.factorData.text}
                 </Flex>
-                {examples.map((s) => (
-                    <span>{s}</span>
+                {examples.map((s, i) => (
+                    <span key={s+i}>{s}</span>
                 ))}
             </Container>
         );

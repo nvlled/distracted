@@ -4,11 +4,12 @@ import (
 	"embed"
 	"math/rand"
 	"os"
-	"strings"
 	"time"
 
+	"github.com/huandu/go-sqlbuilder"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
 
 //go:embed wails.json
@@ -17,35 +18,33 @@ import (
 //go:embed schema.sql
 var assets embed.FS
 
+func index[T any](xs []T, i int) T {
+	if i < 0 || i >= len(xs) {
+		var defaultValue T
+		return defaultValue
+	}
+	return xs[i]
+}
+
 func main() {
 
+	sqlbuilder.DefaultFlavor = sqlbuilder.SQLite
 	rand.Seed(time.Now().UnixNano())
-	// Create an instance of the app structure
 	app := NewApp()
 
-	for _, arg := range os.Args[1:] {
-		arg = strings.TrimPrefix(arg, "-")
-		arg = strings.TrimPrefix(arg, "--")
-
-		if arg == "start-hidden" {
-			app.startHidden = true
-		}
+	if len(os.Args) >= 2 && os.Args[1] == "-devmode" {
+		app.devMode = true
 	}
 
-	// Create application with options
 	err := wails.Run(&options.App{
-		WindowStartState: options.Minimised,
-		StartHidden:      true,
+		AssetServer: &assetserver.Options{
+			Assets:  assets,
+			Handler: app.server,
+		},
 
-		Assets:           assets,
-		AssetsHandler:    app.server,
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 
 		OnStartup: app.startup,
-
-		//OnDomReady:    func(ctx context.Context) {},
-		//OnShutdown:    func(ctx context.Context) {},
-		//OnBeforeClose: func(ctx context.Context) bool { return false },
 
 		Bind: []interface{}{
 			app,

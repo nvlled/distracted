@@ -15,9 +15,6 @@ import (
 // or just plain consts
 var UserDataKeys = struct {
 	IntroCompleted     int
-	DistractionIndex   int
-	LastRedditRequest  int
-	LastYoutubeRequest int
 	DataDirInitialized int
 
 	IsDownloading int
@@ -26,11 +23,9 @@ var UserDataKeys = struct {
 	TextEditor         int
 	LastUsedCollection int
 	LastReviewDate     int
+	LastFsCheck        int
 }{
 	IntroCompleted:     1,
-	DistractionIndex:   2,
-	LastRedditRequest:  3,
-	LastYoutubeRequest: 4,
 	DataDirInitialized: 5,
 
 	IsDownloading: 6,
@@ -39,6 +34,7 @@ var UserDataKeys = struct {
 	TextEditor:         8,
 	LastUsedCollection: 9,
 	LastReviewDate:     10,
+	LastFsCheck:        11,
 }
 
 type DBAPI struct {
@@ -48,6 +44,15 @@ type DBAPI struct {
 
 func (self *DBAPI) GetDataInt(key int) int {
 	var value int
+	err := self.db.Get(&value, "SELECT `value` FROM `user_data` WHERE `key`=$1", key)
+	if err != nil && err != sql.ErrNoRows {
+		runtime.LogDebugf(self.appContext, "failed to query data string: %v", err)
+	}
+
+	return value
+}
+func (self *DBAPI) GetDataInt64(key int) int64 {
+	var value int64
 	err := self.db.Get(&value, "SELECT `value` FROM `user_data` WHERE `key`=$1", key)
 	if err != nil && err != sql.ErrNoRows {
 		runtime.LogDebugf(self.appContext, "failed to query data string: %v", err)

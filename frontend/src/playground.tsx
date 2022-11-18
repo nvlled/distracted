@@ -574,7 +574,7 @@ export namespace CardFilter$ {
     function loadOptions() {
         const res = optionsSchema.safeParse(tryJSONParse(localStorage.getItem(lsKey) ?? ""));
         if (!res.success) {
-            console.log("failed to load options", res.error);
+            //console.log("failed to load options", res.error);
             return { ...defaultOptions };
         }
         const options = res.data;
@@ -711,7 +711,7 @@ export namespace CardListEditor$ {
 
         if (useChanged(items)) {
             setLines(items);
-            if (textareaRef.current) textareaRef.current.value = items.join("\n");
+            //if (textareaRef.current) textareaRef.current.value = items.join("\n");
         }
 
         async function onCheck(): Promise<[boolean, string]> {
@@ -1104,7 +1104,6 @@ export namespace SelectedCards$ {
 
     function LastUpdate({ timestamp }: { timestamp: number }) {
         const d = new Date(timestamp * 1000);
-        const now = new Date();
         return timestamp === 0 ? null : <RelativeTime date={d} />;
     }
 }

@@ -4,7 +4,7 @@ import { memo, ReactNode, useRef, useState } from "react";
 import styled from "styled-components";
 import { app, main } from "./api";
 import { Card } from "./card";
-import { Factor, FactorID } from "./factors";
+import { Factor, FactorID, Factors } from "./factors";
 import { Block, Flex, lt } from "./layout";
 import {
     parseZodFromLocalStorage,
@@ -75,6 +75,13 @@ function CardInfo({ card }: { card: Card }) {
                     <Tooltip content="forgets">
                         <Badge variant="danger" pill>
                             {card.numForget}
+                        </Badge>
+                    </Tooltip>
+                </div>
+                <div>
+                    <Tooltip content="proficiency">
+                        <Badge variant="primary" pill>
+                            {Factors.getAverage(card.proficiency)}
                         </Badge>
                     </Tooltip>
                 </div>
@@ -160,6 +167,7 @@ export namespace SequentRecap$ {
         deferredCards: new Set<number>([]),
         lastNotify: 0,
         lastSound: 0,
+        lastChange: 0,
         lastShown: {} as Record<string, number | undefined>,
         addedCards: {} as Record<number, boolean>,
     };
@@ -250,6 +258,11 @@ export namespace SequentRecap$ {
         }
 
         useInterval(1000, () => {
+            const now = Date.now();
+            if (now - state.lastChange < 1000) {
+                return;
+            }
+
             update(($state) => {
                 const n = $state.countdown;
                 $state.countdown = n > 0 ? n - 1 : 0;
@@ -611,6 +624,8 @@ export namespace SequentRecap$ {
             state.currentCard = null;
         } else {
             const { card, index: nextIndex, factor } = result;
+            console.log(state.currentCard?.filename, "->", card.filename);
+
             state.index = nextIndex;
             state.factor = factor;
             state.countdown = state.options.secondsPerCard;
@@ -618,6 +633,7 @@ export namespace SequentRecap$ {
             state.currentCard = card;
             state.lastShown[card.id] = Date.now();
         }
+        state.lastChange = Date.now();
     }
 
     type findNextCardResult = {
@@ -636,6 +652,7 @@ export namespace SequentRecap$ {
             if (!card) continue;
             if (state.addedCards[card.id]) continue;
             if (state.deferredCards.has(card.id)) continue;
+            if (card.id === state.currentCard?.id) continue;
 
             let factor: FactorID = "meaning";
             if (options.factor === "auto") {

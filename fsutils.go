@@ -12,7 +12,9 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/samber/lo"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -122,7 +124,6 @@ func GetMd5Sum(data []byte) (string, error) {
 	}
 
 	return string(hash.Sum(nil)), nil
-
 }
 
 func GetFileMd5Sum(filename string) (string, error) {
@@ -165,10 +166,10 @@ func ReadNonEmptyLines(filename string) ([]string, error) {
 }
 
 type EnumerateFileEntry struct {
-	Filename         string
-	RelativeFilename string
-	IsDirectory      bool
-	ModTime          int64
+	Filename    string
+	FilePath    string
+	IsDirectory bool
+	ModTime     int64
 }
 
 func EnumerateFiles(srcPath string, returnError *error) chan EnumerateFileEntry {
@@ -192,10 +193,10 @@ func EnumerateFiles(srcPath string, returnError *error) chan EnumerateFileEntry 
 			}
 
 			ch <- EnumerateFileEntry{
-				Filename:         relPath,
-				RelativeFilename: filepath.Join(srcPath, relPath),
-				IsDirectory:      fileInfo.IsDir(),
-				ModTime:          fileInfo.ModTime().Unix(),
+				Filename:    relPath,
+				FilePath:    filepath.Join(srcPath, relPath),
+				IsDirectory: fileInfo.IsDir(),
+				ModTime:     fileInfo.ModTime().Unix(),
 			}
 
 			return nil
@@ -214,4 +215,9 @@ func GetCardPath(absPath string) string {
 	dir, filename := filepath.Split(absPath)
 	deckName := filepath.Base(dir)
 	return path.Join(deckName, filename)
+}
+
+func GetModTime(filename string) time.Time {
+	stat := lo.Must(os.Stat(filename))
+	return stat.ModTime()
 }

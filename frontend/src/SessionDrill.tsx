@@ -10,22 +10,12 @@ import * as app from "../wailsjs/go/main/App";
 import { TabOutDistraction } from "./distraction";
 import { config } from "./config";
 import { ShortAlternating } from "./scheduler";
-import {
-    Button,
-    ButtonGroup,
-    Divider,
-    Drawer,
-    Icon,
-    Shoe,
-    Textarea,
-    TextareaRef,
-    Tooltip,
-} from "./shoelace";
+import { Button, ButtonGroup, Divider, Drawer, Icon, Shoe, Tooltip } from "./shoelace";
 import { Block, Flex } from "./layout";
 import { appState } from "./state";
 import { useAtom } from "jotai";
 import { GrindSettings$ } from "./App";
-import { useChanged, useOnMount, useInterval } from "./hooks";
+import { useOnMount, useInterval } from "./hooks";
 import { z } from "zod";
 import { Keybind, Space } from "./components";
 import { getCardByID } from "./loadedCards";
@@ -228,9 +218,10 @@ namespace GrindStudySession$ {
             }
         });
 
-        if (useChanged(loadedCardsVersion)) {
-            setCards(cards.map((c) => getCardByID(c.id)));
-        }
+        // !!!!!
+        //if (useChanged(loadedCardsVersion)) {
+        //    setCards(cards.map((c) => getCardByID(c.id)));
+        //}
 
         const currentCard = OrderedSet.get(cards, cardID);
 
@@ -306,7 +297,7 @@ namespace GrindStudySession$ {
                         onClose={() => setShowActions(false)}
                     />
                     <br />
-                    <Flipper ref={flipper} rate={1.5}>
+                    <Flipper ref={flipper} rate={2.0}>
                         {body}
                     </Flipper>
                 </Container>

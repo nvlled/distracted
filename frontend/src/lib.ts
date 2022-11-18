@@ -416,6 +416,7 @@ export function parseZodFromLocalStorage<T extends ZodRawShape>(
     return options;
 }
 
+// eslint-disable-next-line @typescript-eslint/ban-types
 export function deferInvoke(millis: number, fn: Function) {
     let timerID: number | undefined = undefined;
     return function (...args: unknown[]): void {
@@ -438,4 +439,20 @@ export function setToArray<T>(xs: Set<T>): T[] {
         result.push(x);
     }
     return result;
+}
+
+export class Oath {
+    private completed = false;
+    private resolution: Action = () => {};
+    fullfill() {
+        this.completed = true;
+        this.resolution();
+    }
+
+    anticipate(): Promise<void> {
+        if (this.completed) return Promise.resolve();
+        return new Promise((resolve) => {
+            this.resolution = resolve;
+        });
+    }
 }

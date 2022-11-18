@@ -1,8 +1,9 @@
+import { Howl } from "howler";
 import { useState } from "react";
 import styled from "styled-components";
 import { Card } from "./card";
 import { useChanged, useOnMount } from "./hooks";
-import { Action, LocalStorageSerializer, sleep } from "./lib";
+import { Action, LocalStorageSerializer, Oath, sleep } from "./lib";
 import { Range, RangeRef, Shoe } from "./shoelace";
 
 const DeckAudioVolumeContainer = styled.div<{ warning: boolean; danger: boolean }>`
@@ -32,7 +33,6 @@ export function DeckAudioVolume({ src }: { src: string }) {
         const volume = (e.target as RangeRef).value;
         setVolume(volume);
 
-        DeckAudio._init();
         if (volume === 1) {
             delete DeckAudio._volumes[src];
         } else {
@@ -52,14 +52,12 @@ export function DeckAudioVolume({ src }: { src: string }) {
     }
 
     useOnMount(() => {
-        DeckAudio._init();
         const volume = DeckAudio._volumes[src];
         if (volume !== undefined) {
             setVolume(volume);
         } else {
             setVolume(1);
         }
-        const fs = src.split("/");
     });
 
     return (
@@ -89,12 +87,12 @@ export const DeckAudio = {
     _volumes: {} as Record<string, number | undefined>,
     _gainNode: null as GainNode | null,
     _intialized: false,
-    _audio: (() => {
-        const audio = document.createElement("audio");
-        audio.muted = true;
-        audio.autoplay = true;
-        return audio;
-    })(),
+    //_audio: (() => {
+    //    const audio = document.createElement("audio");
+    //    audio.muted = true;
+    //    audio.autoplay = true;
+    //    return audio;
+    //})(),
 
     _toRelative(src: string) {
         const origin = location.origin + "/";
@@ -106,7 +104,9 @@ export const DeckAudio = {
 
     _init() {
         if (DeckAudio._intialized) return;
+        /*
         DeckAudio._audio = document.createElement("audio");
+        document.body.appendChild(DeckAudio._audio);
 
         const ctx = new window.AudioContext();
         const audio = DeckAudio._audio;
@@ -120,13 +120,13 @@ export const DeckAudio = {
         gainNode.gain.value = 1.0; // double the volume
         source.connect(gainNode);
         gainNode.connect(ctx.destination);
+        */
 
         DeckAudio._volumes = serializer.load();
         DeckAudio._intialized = true;
     },
 
     async playAudioElem(audio: HTMLAudioElement): Promise<void> {
-        DeckAudio._init();
         audio.muted = false;
 
         const src = decodeURIComponent(DeckAudio._toRelative(audio.src));
@@ -157,57 +157,95 @@ export const DeckAudio = {
             body();
         });
     },
-    async playFirst(card: Card): Promise<void> {
-        await DeckAudio.stop();
-        const audio = DeckAudio._audio;
-        const src = card.audios[0];
+
+    async playPath(src: string[] | string | undefined): Promise<void> {
         if (!src) return;
+        await DeckAudio.stop();
+
+        //const audio = DeckAudio._audio;
+        //const audioSrc = decodeURIComponent(DeckAudio._toRelative(audio.src));
+        //console.log({ src, audioSrc });
+
+        if (typeof src === "string") {
+            src = src.split(",");
+        }
+
+        const volume = DeckAudio._volumes[src[0]] ?? 1;
+        if (volume >= 3) throw "woah there";
+
+        const sound = new Howl({
+            src,
+            volume,
+            loop: false,
+        });
+
+        const oath = new Oath();
+        console.trace();
+        console.log("start playing", src);
+        sound.once("stop", () => oath.fullfill());
+        sound.once("end", () => oath.fullfill());
+        sound.once("pause", () => oath.fullfill());
+
+        function onError(id: number, err: unknown) {
+            console.log("audio error", err);
+            oath.fullfill();
+        }
+        sound.once("loaderror", onError);
+        sound.once("playerror", onError);
+
+        sound.play();
+        await oath.anticipate();
+        await sleep(32);
+        sound.unload();
+        console.log("done playing", src);
+    },
+
+    async playFirst(card: Card): Promise<void> {
+        DeckAudio.playPath(card.audios[0]);
+
+        /*
 
         DeckAudio._playID++;
         for (const f of src.split(",")) {
             audio.src = f;
             await DeckAudio.playAudioElem(audio);
         }
+        */
     },
+
     async play(arg: Card | string): Promise<void> {
         if (!canPlay) return;
 
         await DeckAudio.stop();
-        const audio = DeckAudio._audio;
+        //const audio = DeckAudio._audio;
         const id = ++DeckAudio._playID;
+
         if (typeof arg === "string") {
-            audio.src = arg;
-            audio.load();
-            await DeckAudio.playAudioElem(audio);
+            await DeckAudio.playPath(arg);
             return;
         }
 
         const card = arg;
         for (const src of card.audios) {
-            for (const f of src.split(",")) {
-                if (id !== DeckAudio._playID) return;
-
-                audio.src = f;
-                audio.load();
-                await DeckAudio.playAudioElem(audio);
-            }
+            await DeckAudio.playPath(src);
             await sleep(100);
         }
     },
 
     async stop(src?: string) {
-        const audio = DeckAudio._audio;
-        const playingSrc = decodeURIComponent(DeckAudio._toRelative(audio.src));
-        if (src !== undefined && src !== playingSrc) {
-            return;
-        }
+        Howler.stop();
+        //const audio = DeckAudio._audio;
+        //const playingSrc = decodeURIComponent(DeckAudio._toRelative(audio.src));
+        //if (src !== undefined && src !== playingSrc) {
+        //    return;
+        //}
 
-        await DeckAudio.waitEvent(audio, ["error", "pause", "end", "abort"], () => {
-            audio.pause();
-            audio.currentTime = 0;
-            audio.src = "";
-            audio.load();
-        });
+        //await DeckAudio.waitEvent(audio, ["error", "pause", "end", "abort"], () => {
+        //    audio.pause();
+        //    audio.currentTime = 0;
+        //    audio.src = "";
+        //    audio.load();
+        //});
     },
 };
 
@@ -216,8 +254,21 @@ export function canPlayAudio() {
     return canPlay;
 }
 
+const shit = new Howl({
+    src: "assets/sample-sound.wav",
+    volume: 1,
+});
+shit.play();
+
 function onWindowClick() {
     canPlay = true;
+    shit.unload();
+    DeckAudio._init();
     window.removeEventListener("click", onWindowClick);
 }
 window.addEventListener("click", onWindowClick);
+
+Howler.autoUnlock = true;
+Howler.html5PoolSize = 25;
+Howler.autoSuspend = false;
+Howler.usingWebAudio = true;

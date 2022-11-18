@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,16 +17,16 @@ func (self *App) serveDeckFile(routerCtx echo.Context, pathFields []string) (boo
 	deckFile := strings.Join(pathFields[1:], string(os.PathSeparator))
 	deckName := pathFields[0]
 
-	runtime.LogInfof(self.ctx,
-		"search for deck file %v, %v",
+	fmt.Printf(
+		"search for deck file %v, %v\n",
 		deckName,
 		deckFile,
 	)
 
 	filename := filepath.Join(self.config.DecksDir, deckName, deckFile)
 
-	runtime.LogInfof(self.ctx,
-		"serving deck file: id=%v, %v",
+	fmt.Printf(
+		"serving deck file: id=%v, %v\n",
 		deckName,
 		filename,
 	)
@@ -62,6 +63,8 @@ func (self *App) createServer() *echo.Echo {
 			reqPath := c.Request().URL.Path
 			reqPath = strings.TrimLeft(reqPath, "/")
 			fields := strings.Split(reqPath, "/")
+
+			fmt.Printf("got request: %v\n", c.Request().URL.Path)
 
 			var err error
 			handled := false

@@ -28,15 +28,10 @@ type StudySessionTypes struct {
 }
 
 type Config struct {
-	StartDecksDir         string
-	SampleDistractionsDir string
-	UserDataDir           string
-	DecksDir              string
-	DistractionsDir       string
-
-	//UserDataFile       string
-	UserInterestsFile  string
-	UserSubredditsFile string
+	StartDecksDir   string
+	UserDataDir     string
+	DecksDir        string
+	DistractionsDir string
 
 	DBFile string
 
@@ -68,7 +63,7 @@ type CardRow struct {
 	ConsecForget   int     `db:"consecForget"`
 	LastUpdate     int64   `db:"lastUpdate"`
 	LastRecallDate int64   `db:"lastRecallDate"`
-	Counter        int64   `json:"counter"`
+	Counter        int64   `db:"counter"`
 }
 
 type CardStats struct {
@@ -100,6 +95,7 @@ type CardFile struct {
 	DeckName string `json:"deckName"`
 	Filename string `json:"filename"`
 	Path     string `json:"path"`
+	ModTime  int64
 }
 
 type StudySession struct {
@@ -114,7 +110,7 @@ type StudySession struct {
 type ErrorList struct {
 	ErrInvalidDeckPath        error `json:"errInvalidDeckPath"`
 	ErrDeckAlreadyAdded       error `json:"errDeckAlreadyAdded "`
-	ErrIOError                error `json:"ErrIOError "`
+	ErrSysError               error `json:"ErrIOError "`
 	ErrCreateDeckPathNotEmpty error `json:"errCreateDeckPathNotEmpty"`
 	ErrInvalidStartingDeck    error `json:"errInvalidStartingDeck "`
 	ErrRedditRateLimit        error `json:"errRedditRateLimit "`
@@ -125,7 +121,7 @@ type ErrorList struct {
 var errorList = ErrorList{
 	ErrInvalidDeckPath:        errors.New("invalid deck path"),
 	ErrDeckAlreadyAdded:       errors.New("deck already added"),
-	ErrIOError:                errors.New("something went wrong while dealing with files"),
+	ErrSysError:               errors.New("something went wrong while dealing with files"),
 	ErrCreateDeckPathNotEmpty: errors.New("deck folder must be empty"),
 	ErrInvalidStartingDeck:    errors.New("unknown starting deck name"),
 	ErrRedditRateLimit:        errors.New("too many reddit requests"),

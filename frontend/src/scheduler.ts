@@ -60,7 +60,7 @@ export namespace ShortAlternating {
 
     export function studyCard<T extends Item>(card: T, trial: FactorTrial, recalled: boolean) {
         card = { ...card };
-        const pow = 1.8;
+        const pow = 1.3;
         if (recalled) {
             card.numRecall++;
             card.consecRecall++;

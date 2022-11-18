@@ -10,5 +10,5 @@
     "name": "Ronald Casili",
     "email": "nvlled@gmail.com"
   },
-  "appargs": "-start-hidden"
+  "appargs": "-devmode"
 }

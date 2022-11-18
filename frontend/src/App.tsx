@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useRef, useState } from "react";
 import * as app from "../wailsjs/go/main/App";
 import * as runtime from "../wailsjs/runtime";
 import { useAtom } from "jotai";
@@ -15,15 +15,17 @@ import "@shoelace-style/shoelace/dist/themes/dark.css";
 import { CardSort, Playground } from "./playground";
 import { GrindStudySession } from "./SessionDrill";
 import { Checkbox, Drawer, EventUtil, Range, Shoe } from "./shoelace";
-import { Space, ToggleKeybindInfo } from "./components";
-import { useOnMount, useInterval, useSomeChanged, useChanged } from "./hooks";
+import { Space, Hotbar } from "./components";
+import { useOnMount, useInterval, useSomeChanged, useChanged, useFn } from "./hooks";
 import { z } from "zod";
 import {
     addListener,
     getCardByID,
     load as loadAllCards,
+    remove as removeLoadedCard,
     update as updateLoadedCard,
 } from "./loadedCards";
+import { cardEvents } from "./api";
 
 const DrawerContainer = styled.div<{ width?: string }>`
     > sl-drawer {
@@ -78,7 +80,7 @@ function App() {
 
             async updateCardStat(card: Card) {
                 await app.PersistCardStats(card);
-                updateLoadedCard(card);
+                updateLoadedCard(card, "WRITE");
             },
 
             addDrillCard(cardID: number) {
@@ -103,7 +105,7 @@ function App() {
         setActions(appActions);
 
         async function init() {
-            const [userData, decks, cardIDs, _] = await Promise.all([
+            const [userData, decks, cardIDs] = await Promise.all([
                 app.GetUserData(),
                 app.GetDecks(),
                 app.GetDailyStudyCardIds(),
@@ -111,7 +113,10 @@ function App() {
             ]);
 
             addListener(() => {
-                setLoadedCardsVersion((v) => v + 1);
+                setLoadedCardsVersion((v) => {
+                    console.log("updated loaded card version", v + 1);
+                    return v + 1;
+                });
             });
 
             setUserData(userData);
@@ -121,22 +126,25 @@ function App() {
 
             setInitialized(true);
 
-            runtime.EventsOn("card-file-updated", async (data) => {
-                if (typeof data !== "string") {
+            runtime.EventsOn("card-file-updated", async (cardPath: unknown, op: unknown) => {
+                console.log("card-file-updated", cardPath);
+                if (typeof cardPath !== "string" || typeof op !== "string") {
                     return;
                 }
-                const cardData = await app.GetCard(data);
-                const card = Card.parse(cardData);
-                updateLoadedCard(card);
+                if (op === "REMOVE") {
+                    removeLoadedCard(cardPath);
+                } else {
+                    const cardData = await app.GetCard(cardPath);
+                    const card = Card.parse(cardData);
+                    updateLoadedCard(card, op);
+                    cardEvents.emit(card);
+                }
             });
 
             app.ClearBreakTimeNotifiers();
         }
 
         init();
-        window.onbeforeunload = () => {
-            app.ClearWatchedFiles();
-        };
     });
 
     if (useChanged(drillCardIDs)) {
@@ -158,17 +166,20 @@ function App() {
 
     return (
         <AppContainer id="App">
-            <ToggleKeybindInfo />
+            <TestAudio />
+            <Hotbar />
             {drawerContent && (
                 <DrawerContainer width={drawerOptions?.width}>
                     <Drawer
                         label={drawerOptions?.title}
                         open={true}
                         onSlAfterHide={() => {
+                            console.log("hiding drawer");
                             setDrawerContent(null);
                             setDrawerOptions(null);
                         }}
                         onSlRequestClose={(e) => {
+                            console.log("closing drawer");
                             if ((e as any).detail.source === "overlay" && drawerOptions?.keepOpen) {
                                 e.preventDefault();
                             }
@@ -319,3 +330,38 @@ const saveCards = deferInvoke(1000, (cards: Card[]) => {
         cards.map((c) => c.path),
     );
 });
+
+export namespace TestAudio$ {
+    export interface Props {}
+    export function View({}: Props) {
+        const [x, setX] = useState(0);
+
+        // eslint-disable-next-line @typescript-eslint/ban-types
+        const z = useRef(new Set<Function>());
+
+        const fn = useFn(() => {
+            console.log("x=", x, z.current.has(fn));
+        });
+
+        useOnMount(() => {
+            z.current.add(fn);
+        });
+
+        return (
+            <Container>
+                {/*
+                <button onClick={() => setX(x + 1)}>{x}</button>
+                <button onClick={() => fn()}>aha</button>
+                */}
+            </Container>
+        );
+    }
+    const Container = styled.div`
+        .image-container {
+            height: 90px;
+            overflow: hidden;
+            text-align: right;
+        }
+    `;
+}
+export const TestAudio = TestAudio$.View;

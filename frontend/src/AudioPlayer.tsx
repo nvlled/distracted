@@ -13,7 +13,10 @@ export namespace AudioPlayer$ {
     export interface Props {
         src: string;
     }
-    export const View = forwardRef(({ src }: Props, ref: ForwardedRef<Control>) => {
+    export const View = forwardRef(function AudioPlayer(
+        { src }: Props,
+        ref: ForwardedRef<Control>,
+    ) {
         const [showSettings, setShowSettings] = useState(false);
         const [playing, setPlaying] = useState(false);
         const [showTip, setShowTip] = useState(false);
@@ -32,6 +35,8 @@ export namespace AudioPlayer$ {
             () => ({
                 isPlaying: () => stateRef.current.playing,
                 play: async () => {
+                    console.log("AudioPlayer.play()");
+                    if (stateRef.current.playing) return;
                     DeckAudio.stop(src);
                     updatePlaying(true);
                     await DeckAudio.play(src);
@@ -46,6 +51,7 @@ export namespace AudioPlayer$ {
         );
 
         async function onPlay() {
+            console.log("onPlay");
             setShowTip(false);
             if (!playing) {
                 updatePlaying(true);
@@ -58,15 +64,11 @@ export namespace AudioPlayer$ {
         }
 
         return (
-            <Container
-                onClick={() => {
-                    onPlay();
-                }}
-            >
+            <Container onClick={onPlay}>
                 <Dialog
                     label="sound settings"
                     open={showSettings}
-                    onSlAfterHide={() => setShowSettings(false)}
+                    onSlHide={() => setShowSettings(false)}
                 >
                     <Block className="sound-settings-body">
                         filename: {src}
@@ -74,18 +76,21 @@ export namespace AudioPlayer$ {
                         <DeckAudioVolume src={src} />
                     </Block>
                 </Dialog>
+                {/*
                 <Tooltip open={showTip && !playing} content={"right click to open settings"}>
+                </Tooltip>
+                */}
+                <div>
                     <IconButton
                         name={!playing ? "play-circle" : "stop-circle"}
                         onMouseOver={() => setShowTip(true)}
                         onMouseOut={() => setShowTip(false)}
-                        onClick={onPlay}
                         onContextMenu={(e) => {
                             e.preventDefault();
                             setShowSettings(true);
                         }}
                     />
-                </Tooltip>
+                </div>
             </Container>
         );
     });

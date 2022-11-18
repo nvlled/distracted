@@ -1,13 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/samber/lo"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (self *App) GetConfig() Config {
@@ -16,50 +12,47 @@ func (self *App) GetConfig() Config {
 
 func (app *App) LoadConfig() {
 	var config = Config{
-		StartDecksDir:         "starting-decks",
-		SampleDistractionsDir: "sample-distractions",
-		BaseUrlDecks:          "decks",
-		DailyStudyName:        DefaultStudyName,
-		MaxLearnLevel:         MaxLearnLevel,
-		CurrentDate:           app.CurrentDate(),
-		LastReviewDate:        123,
+		StartDecksDir:  "starting-decks",
+		BaseUrlDecks:   "decks",
+		DailyStudyName: DefaultStudyName,
+		MaxLearnLevel:  MaxLearnLevel,
+		CurrentDate:    app.CurrentDate(),
+		LastReviewDate: 0,
 		StudySessionTypes: StudySessionTypes{
 			Normal: StudySessionTypeNormal,
 			Quiz:   StudySessionTypeQuiz,
 		},
+
+		UserDataDir:     "",
+		DecksDir:        "",
+		DistractionsDir: "",
+		DBFile:          "",
+		AppName:         "blah",
 	}
 
-	bytes := lo.Must(assets.ReadFile("wails.json"))
-	data := struct {
-		Name string `json:"name"`
-	}{}
-
-	lo.Must0(json.Unmarshal(bytes, &data))
-
 	userDataDir := "."
-	if exePath, err := os.Executable(); err == nil {
-		userDataDir = filepath.Dir(exePath)
+	if app.devMode {
+		if dir, err := os.Getwd(); err != nil {
+			panic(err)
+		} else {
+			userDataDir = dir
+		}
 	} else {
-		runtime.LogDebugf(app.ctx, "failed to get executable path: %v", err.Error())
-		exePath, err = os.UserConfigDir()
-		if err != nil {
-			runtime.LogDebugf(app.ctx, "failed to get user data path: %v", err.Error())
-			exePath = "."
+		if exePath, err := os.Executable(); err != nil {
+			panic(err)
+		} else {
+			userDataDir = filepath.Dir(exePath)
 		}
 	}
 
-	config.AppName = data.Name
 	config.UserDataDir = filepath.Join(userDataDir, "data")
-	//config.UserDataFile = filepath.Join(config.UserDataDir, "data.json")
-	config.UserInterestsFile = filepath.Join(config.UserDataDir, "interests.txt")
-	config.UserSubredditsFile = filepath.Join(config.UserDataDir, "subreddits.txt")
 
 	config.DBFile = filepath.Join(config.UserDataDir, "data.sqlite3")
 	config.DecksDir = filepath.Join(config.UserDataDir, "decks")
 	config.DistractionsDir = filepath.Join(config.UserDataDir, "distractions")
 
 	fmt.Printf("user data dir: %v\n", config.UserDataDir)
-	Mkdir(config.UserDataDir)
+	//Mkdir(config.UserDataDir)
 
 	app.config = &config
 }

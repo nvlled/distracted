@@ -1,5 +1,5 @@
 import { useAtom } from "jotai";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { app, cardEvents } from "./api";
 import { Card } from "./card";
 import { Action, Action1, createPair, invoke } from "./lib";
@@ -17,9 +17,9 @@ export function usePreviousSessionIDs() {
 }
 
 export function useOnMount(fn: () => void | Promise<void>) {
-    // eslint-disable-next-line
     useEffect(() => {
         fn();
+        // eslint-disable-next-line
     }, []);
 }
 export function useOnUnmount(fn: Action) {
@@ -113,14 +113,11 @@ export function useCards(ids: number[]): Card[] {
 export function useKeyPress(keyName: string | "any", fn: Action1<string>) {
     const savedCallback = useRef<Action1<string> | null>();
 
-    const handler = useCallback(
-        (e: KeyboardEvent) => {
-            if (e.key === keyName || keyName === "any") {
-                savedCallback.current?.(e.key);
-            }
-        },
-        [keyName],
-    );
+    const handler = useFn((e: KeyboardEvent) => {
+        if (e.key === keyName || keyName === "any") {
+            savedCallback.current?.(e.key);
+        }
+    });
 
     useEffect(() => {
         savedCallback.current = fn;
@@ -134,18 +131,49 @@ export function useKeyPress(keyName: string | "any", fn: Action1<string>) {
     });
 }
 
-export function useCardWatch(cardInit: Card) {
-    const [card, setCard] = useState(cardInit);
-    useEffect(() => {
-        setCard(cardInit);
-        cardEvents.addListener((card) => {
+export function useCardWatch(watchedCard: Card) {
+    const [card, setCard] = useState(watchedCard);
+
+    if (useChanged(watchedCard)) {
+        setCard(watchedCard);
+    }
+
+    // this only works for props though
+    // this will bite me again later if I'm not careful
+    // aha, now it works with state and props
+    // useFn may be less efficient than useCallback,
+    // but at least it more predictable and doesn't
+    // need some shitty deps
+    // At this point, I'm convinced useEffect and any
+    // hooks that has deps is a mistake, should
+    // only be used on really rare cases.
+    // There's eslint, but I've encountered
+    // cases where eslint couldn't detect the problems.
+
+    const handler = useFn((card: Card) => {
+        if (card.path === watchedCard.path) {
             setCard(card);
-        });
-        app.WatchCardFile(cardInit.path);
-        return () => {
-            app.UnwatchCardFile(cardInit.path);
-        };
-    }, [cardInit.path]);
+        }
+    });
+
+    /*
+
+    */
+
+    // useEffect and deps sure is full of buggy landmines
+    // it's very counter to my intuition on how normal
+    // js code works
+    // if I have to think and look really hard to
+    // see the problem, even for a simple code, then I would say
+    // ergonomics is pretty bad
+
+    //useEffect(() => {
+    //    cardEvents.addListener(handler.current);
+    //    return () => cardEvents.removeListener(handler.current);
+    //}, [handler]);
+
+    useOnMount(() => cardEvents.addListener(handler));
+    useOnUnmount(() => cardEvents.removeListener(handler));
 
     return createPair(card, setCard);
 }
@@ -159,7 +187,25 @@ export function useInterval(millis: number, fn: Action) {
     });
 
     useEffect(() => {
-        let id = setInterval(() => savedCallback.current?.(), millis);
+        const id = window.setInterval(() => savedCallback.current?.(), millis);
         return () => clearInterval(id);
     }, [millis]);
+}
+
+// useFn is similar to useCallback, except it doesn't
+// need deps to refer to current state. Can be used for event
+// listeners.
+
+// eslint-disable-next-line @typescript-eslint/ban-types
+export function useFn<T extends Function>(fn: T) {
+    const innerFnRef = useRef(fn);
+
+    useEffect(() => {
+        innerFnRef.current = fn;
+    });
+
+    const outerFnRef = useRef((...args: unknown[]) => {
+        return innerFnRef.current(...args);
+    });
+    return outerFnRef.current;
 }
