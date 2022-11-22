@@ -5,7 +5,7 @@ import { app } from "./api";
 import { AudioPlayer } from "./AudioPlayer";
 import { Card } from "./card";
 import { useCardWatch } from "./hooks";
-import { Divider } from "./shoelace";
+import { Button, Divider, Input } from "./shoelace";
 
 export namespace CardView$ {
     export interface Props {

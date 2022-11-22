@@ -180,8 +180,6 @@ export const DeckAudio = {
         });
 
         const oath = new Oath();
-        console.trace();
-        console.log("start playing", src);
         sound.once("stop", () => oath.fullfill());
         sound.once("end", () => oath.fullfill());
         sound.once("pause", () => oath.fullfill());
@@ -197,7 +195,6 @@ export const DeckAudio = {
         await oath.anticipate();
         await sleep(32);
         sound.unload();
-        console.log("done playing", src);
     },
 
     async playFirst(card: Card): Promise<void> {

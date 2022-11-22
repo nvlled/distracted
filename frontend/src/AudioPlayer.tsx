@@ -2,7 +2,7 @@ import { ForwardedRef, forwardRef, useImperativeHandle, useRef, useState } from 
 import styled from "styled-components";
 import { DeckAudio, DeckAudioVolume } from "./DeckAudio";
 import { Block } from "./layout";
-import { Dialog, IconButton, Shoe, Tooltip } from "./shoelace";
+import { Button, Dialog, IconButton, Shoe, Tooltip } from "./shoelace";
 
 export namespace AudioPlayer$ {
     export interface Control {
@@ -35,7 +35,6 @@ export namespace AudioPlayer$ {
             () => ({
                 isPlaying: () => stateRef.current.playing,
                 play: async () => {
-                    console.log("AudioPlayer.play()");
                     if (stateRef.current.playing) return;
                     DeckAudio.stop(src);
                     updatePlaying(true);
@@ -51,7 +50,6 @@ export namespace AudioPlayer$ {
         );
 
         async function onPlay() {
-            console.log("onPlay");
             setShowTip(false);
             if (!playing) {
                 updatePlaying(true);

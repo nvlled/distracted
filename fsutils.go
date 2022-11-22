@@ -104,7 +104,7 @@ func CopyFileContents(srcFile, destFile string) (err error) {
 
 func Mkdir(dir string) { os.MkdirAll(dir, 0755) }
 
-func CopyFiles(srcDir string, destDir string) []string {
+func CopyDirFiles(srcDir string, destDir string) []string {
 	var matches []string
 	println("copying files")
 	filepath.WalkDir(destDir, func(path string, d fs.DirEntry, err error) error {
@@ -220,4 +220,13 @@ func GetCardPath(absPath string) string {
 func GetModTime(filename string) time.Time {
 	stat := lo.Must(os.Stat(filename))
 	return stat.ModTime()
+}
+
+func CopyFiles(ctx context.Context, paths []string, destDir string) {
+	for _, filename := range paths {
+		baseName := filepath.Base(filename)
+		destName := filepath.Join(destDir, baseName)
+		err := CopyFileContents(filename, destName)
+		logError(ctx, err)
+	}
 }

@@ -14,7 +14,7 @@ import "@shoelace-style/shoelace/dist/themes/dark.css";
 
 import { CardSort, Playground } from "./playground";
 import { GrindStudySession } from "./SessionDrill";
-import { Checkbox, Drawer, EventUtil, Range, Shoe } from "./shoelace";
+import { Button, Checkbox, Drawer, EventUtil, IconButton, Range, Shoe } from "./shoelace";
 import { Space, Hotbar } from "./components";
 import { useOnMount, useInterval, useSomeChanged, useChanged, useFn } from "./hooks";
 import { z } from "zod";
@@ -122,15 +122,17 @@ function App() {
             setUserData(userData);
             setDecks(decks);
             setDrillSort(CardSort.loadDrillSort());
-            setDrillCardIDs(cardIDs);
+
+            if (cardIDs.length > 0) setDrillCardIDs(cardIDs);
 
             setInitialized(true);
 
             runtime.EventsOn("card-file-updated", async (cardPath: unknown, op: unknown) => {
-                console.log("card-file-updated", cardPath);
+                console.log("card-file-updated", cardPath, "op=" + op);
                 if (typeof cardPath !== "string" || typeof op !== "string") {
                     return;
                 }
+                debugger;
                 if (op === "REMOVE") {
                     removeLoadedCard(cardPath);
                 } else {

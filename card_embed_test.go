@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/samber/lo"
@@ -31,14 +33,34 @@ three
 
 	println(contents)
 	readStats := lo.Must(ReadEmbeddedCardData(contents))
-	var huh *EmbeddedCardData = nil
-	if readStats == huh {
-		t.Fail()
+	if readStats != nil {
+		if readStats.Interval != stats.Interval {
+			t.Fail()
+		}
+		if readStats.Proficiency != stats.Proficiency {
+			t.Fail()
+		}
 	}
-	if readStats.Interval != stats.Interval {
-		t.Fail()
+}
+
+func TestFilenameExtract(t *testing.T) {
+	actual := GetCardMediaFilenames(`one\two\three.png
+path/to/filename.md   filename.jpeg   
+[some/file.ogg]
+`)
+	expected := []string{
+		"one\\two\\three.png",
+		"path/to/filename.md",
+		"filename.jpeg",
+		"some/file.ogg",
 	}
-	if readStats.Proficiency != stats.Proficiency {
-		t.Fail()
+	fmt.Printf("%+v, %+v\n", actual, expected)
+	if len(actual) != len(expected) {
+		t.Fatal("actual and expected length does not match")
+	}
+	for i := range actual {
+		if actual[i] != expected[i] {
+			t.Fatalf(`'%+v' != '%+v'`, actual[i], strings.TrimSpace(expected[i]))
+		}
 	}
 }

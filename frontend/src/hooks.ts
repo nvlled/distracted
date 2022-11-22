@@ -209,3 +209,33 @@ export function useFn<T extends Function>(fn: T) {
     });
     return outerFnRef.current;
 }
+
+export function useDecks() {
+    const [decks, setDecks] = useState<string[]>([]);
+    useOnMount(async () => {
+        const decks = await app.GetDecks();
+        setDecks(decks);
+    });
+
+    return decks;
+}
+
+export function useOnClickOutside(node: Node | undefined | null, fn: Action) {
+    const handler = useFn((e: MouseEvent) => {
+        if (!node) return;
+        let target = e.target as Node | null;
+        let outside = true;
+        while (target) {
+            if (target === node) {
+                outside = false;
+                break;
+            }
+            target = target.parentNode;
+        }
+        if (outside) {
+            fn();
+        }
+    });
+    useOnMount(() => window.addEventListener("click", handler));
+    useOnUnmount(() => window.removeEventListener("click", handler));
+}

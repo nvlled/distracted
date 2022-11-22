@@ -29,6 +29,12 @@ import {
     Tooltip,
     Animation,
     Divider,
+    Input,
+    Dropdown,
+    Select,
+    MenuItem,
+    SelectRef,
+    IconButton,
 } from "./shoelace";
 import { z } from "zod";
 import { produce, enableMapSet } from "immer";
@@ -36,7 +42,15 @@ import { canPlayAudio, DeckAudio } from "./DeckAudio";
 import { Keybind, Space } from "./components";
 import { config } from "./config";
 import { CardFilter$ } from "./playground";
-import { useChanged, useDrillCards, useOnMount, usePreviousSessionIDs, useInterval } from "./hooks";
+import {
+    useChanged,
+    useDrillCards,
+    useOnMount,
+    usePreviousSessionIDs,
+    useInterval,
+    useDecks,
+    useOnClickOutside,
+} from "./hooks";
 import { Flipper, Flipper$ } from "./Flipper";
 import { iterate as iterateLoadedCards } from "./loadedCards";
 
@@ -183,10 +197,17 @@ export namespace SequentRecap$ {
         const [drillCards, setDrillCards] = useDrillCards();
         const [state, setState] = useState<RenderState>(defaultRenderState);
         const [filteredCards, setFilteredCards] = useState<main.CardData[]>([]);
+        const [containerFocused, setContainerFocused] = useState(false);
 
         const flipper = useRef<Flipper$.Control | null>(null);
         const audioPlayer = useRef<AudioPlayer$.Control | null>(null);
+        const selectDeckRef = useRef<SelectRef | null>(null);
+        const containerRef = useRef<HTMLDivElement | null>(null);
+
         const previousIDs = usePreviousSessionIDs();
+
+        const [destDeck, setDestDeck] = useState<string | null>(null);
+        const decks = useDecks();
 
         type UpdateFn = (arg: RenderState) => void | unknown;
         type UpdateOptionsFn = (arg: Options.T) => void | unknown;
@@ -214,6 +235,20 @@ export namespace SequentRecap$ {
             DeckAudio.stop();
             $state.lastSound = 0;
             updateNextCard($state, filteredCards);
+        }
+
+        function onMoveToDeck(card: Card | null) {
+            if (!selectDeckRef.current || !card || !destDeck) return;
+            actions.toastInfo(`card ${card.path} has been moved to ${destDeck}`, {
+                variant: "success",
+            });
+            update(($state) => {
+                $state.countdown = $state.options.secondsPerCard;
+                updateNextCard($state, filteredCards);
+            });
+
+            app.MoveCardToDeck(card.path, destDeck);
+            // TODO: app.MoveCardToDeck(card.path, destDeck)
         }
 
         async function onHuh(card: Card | null) {
@@ -281,10 +316,11 @@ export namespace SequentRecap$ {
             initialize();
         }
         function initialize() {
+            setDestDeck(MoveToDeckState.load());
+
             const deferred = DeferredCards.load();
             const deferredSet = new Set(deferred.cardIDs);
 
-            console.log("initializing state");
             let rawCards = filter ? CardFilter$.filterCards(iterateLoadedCards(), filter) : [];
             rawCards = shuffleCards(rawCards, previousIDs);
             setFilteredCards(rawCards);
@@ -304,6 +340,10 @@ export namespace SequentRecap$ {
         }
 
         useOnMount(initialize);
+
+        useOnClickOutside(containerRef.current, () => {
+            setContainerFocused(false);
+        });
 
         if (useChanged(filter)) {
             initialize();
@@ -359,7 +399,7 @@ export namespace SequentRecap$ {
         }
 
         return (
-            <Container>
+            <Container ref={containerRef}>
                 <CardBox>
                     <Flex justifyContent={"space-between"}>
                         <div>
@@ -367,6 +407,18 @@ export namespace SequentRecap$ {
                             <CardInfo card={card} />
                         </div>
                         <Block cml={Shoe.spacing_small_2x}>
+                            <KeyIndicator active={containerFocused}>
+                                <Tooltip content="click to enable key shortcuts">
+                                    <IconButton
+                                        name="keyboard"
+                                        onClick={() => {
+                                            console.log(containerFocused);
+                                            setContainerFocused(!containerFocused);
+                                        }}
+                                    />
+                                </Tooltip>
+                            </KeyIndicator>
+
                             <Button size="small" onClick={() => update((s) => (s.running = false))}>
                                 stop
                             </Button>
@@ -503,7 +555,7 @@ export namespace SequentRecap$ {
                     </Flipper>
 
                     <br />
-                    <Keybind keyName="ArrowUp">
+                    <Keybind keyName="ArrowUp" active={containerFocused}>
                         <Button
                             size="small"
                             outline
@@ -513,7 +565,7 @@ export namespace SequentRecap$ {
                         </Button>
                     </Keybind>
                     <Flex>
-                        <Keybind keyName="ArrowLeft" placement="bottom">
+                        <Keybind keyName="ArrowLeft" placement="bottom" active={containerFocused}>
                             <Button
                                 size="medium"
                                 variant={Card.isNew(card) ? "success" : "warning"}
@@ -524,19 +576,51 @@ export namespace SequentRecap$ {
                             </Button>
                         </Keybind>
                         <Block mx={Shoe.spacing_medium}>??</Block>
-                        <Keybind keyName="ArrowRight">
+                        <Keybind keyName="ArrowRight" active={containerFocused}>
                             <Button variant="neutral" onClick={() => onHuh(card)} size="medium">
                                 next <Icon name="arrow-right" />
                             </Button>
                         </Keybind>
                     </Flex>
-                    {Card.isNew(card) && (
-                        <Keybind keyName="ArrowDown">
+                    {Card.isNew(card) ? (
+                        <Keybind keyName="ArrowDown" active={containerFocused}>
                             <Button outline size="small" onClick={() => onLearnCard(card)}>
                                 ↓ mark as reviewing
                             </Button>
                         </Keybind>
-                    )}
+                    ) : decks ? (
+                        <>
+                            <br />
+                            <Flex>
+                                <Select
+                                    ref={selectDeckRef}
+                                    className="deck-select"
+                                    size="small"
+                                    value={destDeck ?? ""}
+                                    onSlChange={(e) => {
+                                        const deck: string = EventUtil.value(e) ?? "";
+                                        MoveToDeckState.save(deck);
+                                        setDestDeck(deck);
+                                    }}
+                                >
+                                    {decks.map((name) => (
+                                        <MenuItem key={name} value={name}>
+                                            {name}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                                <Tooltip content="double click to move" placement="right">
+                                    <Button
+                                        size="small"
+                                        onDoubleClick={() => onMoveToDeck(card)}
+                                        disabled={card.deckName === destDeck}
+                                    >
+                                        move to deck
+                                    </Button>
+                                </Tooltip>
+                            </Flex>
+                        </>
+                    ) : null}
                 </lt.Row>
             </Container>
         );
@@ -582,7 +666,17 @@ export namespace SequentRecap$ {
                 border: 0;
             }
         }
+        .deck-select {
+            min-width: 200px;
+        }
     `;
+    const KeyIndicator = styled.div<{ active: boolean }>`
+        display: inline-block;
+        sl-icon-button::part(base) {
+            color: ${(props) => (props.active ? Shoe.color_primary_600 : "inherit")};
+        }
+    `;
+
     const SettingsLabel = styled.div`
         &::after {
             content: ":";
@@ -624,7 +718,6 @@ export namespace SequentRecap$ {
             state.currentCard = null;
         } else {
             const { card, index: nextIndex, factor } = result;
-            console.log(state.currentCard?.filename, "->", card.filename);
 
             state.index = nextIndex;
             state.factor = factor;
@@ -716,6 +809,16 @@ export namespace SequentRecap$ {
             }
         }
         return;
+    }
+
+    namespace MoveToDeckState {
+        const lsKey = "move-to-deck";
+        export function load() {
+            return localStorage.getItem(lsKey);
+        }
+        export function save(deckName: string) {
+            localStorage.setItem(lsKey, deckName);
+        }
     }
 
     const pickSettings = {

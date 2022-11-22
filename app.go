@@ -149,6 +149,7 @@ func (app *App) InitDataDir() {
 	config := app.config
 	Mkdir(config.DecksDir)
 	Mkdir(config.DistractionsDir)
+	Mkdir(config.MediaDir)
 	app.dbAPI.SetData(UserDataKeys.DataDirInitialized, "1")
 }
 
@@ -571,6 +572,26 @@ func (app *App) GetStudySessionCardIDsToday(sessionName string) ([]int64, error)
 
 	return result, nil
 
+}
+
+func (app *App) MoveCardToDeck(cardPath string, deckName string) error {
+	filename := filepath.Base(cardPath)
+	srcCardPath := filepath.Join(app.config.DecksDir, cardPath)
+	destCardPath := filepath.Join(app.config.DecksDir, deckName, filename)
+
+	Mkdir(filepath.Join(app.config.DecksDir, deckName))
+
+	debugf(app.ctx, "moving %v to %v", srcCardPath, destCardPath)
+	err := CopyFileContents(srcCardPath, destCardPath)
+	if err != nil {
+		return logError(app.ctx, err)
+	}
+	if !RegularFileExists(app.ctx, destCardPath) {
+		return fmt.Errorf("failed to move card %v to %v", cardPath, deckName)
+	}
+
+	err = os.Remove(srcCardPath)
+	return logError(app.ctx, err)
 }
 
 func (app *App) GetDecks() ([]string, error) {

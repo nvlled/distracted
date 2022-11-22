@@ -224,7 +224,7 @@ func (self *App) UpdateModifiedCard(cardPath string) error {
 
 	// card data explicitly requested to be deleted
 	if data.Delete {
-		self.Debugf("deleting card data", cardPath)
+		self.Debugf("deleting card data: %v", cardPath)
 		b := sqlbuilder.NewDeleteBuilder()
 		b.DeleteFrom("cards").Where(b.Equal("path", cardPath))
 		_, err := db.Exec(b.Build())
@@ -328,3 +328,32 @@ func (self *App) UpdateModifiedCard(cardPath string) error {
 
 	return nil
 }
+
+/*
+func (app *App) getFullDeckPath(cardPath string) string {
+	return lo.Must(filepath.Abs(filepath.ToSlash(path.Dir(cardPath))))
+}
+
+func (app *App) CopyCardFiles(srcCardPath string, destCardPath string) {
+	ctx := app.ctx
+	fullCardPath := filepath.Join(app.config.DecksDir, string(srcCardPath))
+	srcDir := filepath.Join(app.config.DecksDir, string(srcCardPath))
+	destDir := filepath.Join(app.config.DecksDir, string(srcCardPath))
+
+	contents := lo.Must(ioutil.ReadFile(fullCardPath))
+	mediaFiles := GetCardMediaFilenames(string(contents))
+	debugf(ctx, "mediaFiles: %+v", mediaFiles)
+	for _, mediaFile := range mediaFiles {
+		srcMediaFile := filepath.Join(srcDir, mediaFile)
+		destMediaFile := filepath.Join(destDir, mediaFile)
+		debugf(ctx, "copying %v -> %v", srcMediaFile, destMediaFile)
+		_, err := os.Stat(mediaFile)
+		logError(ctx, err)
+		//emptyFile := err == nil && stat.Size() == 0
+		if err == nil {
+			//err = CopyFileContents(srcMediaFile, destMediaFile)
+			//logError(app.ctx, err)
+		}
+	}
+}
+*/

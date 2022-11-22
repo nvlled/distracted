@@ -23,6 +23,7 @@ func (app *App) LoadConfig() {
 			Quiz:   StudySessionTypeQuiz,
 		},
 
+		MediaDir:        "",
 		UserDataDir:     "",
 		DecksDir:        "",
 		DistractionsDir: "",
@@ -50,6 +51,7 @@ func (app *App) LoadConfig() {
 	config.DBFile = filepath.Join(config.UserDataDir, "data.sqlite3")
 	config.DecksDir = filepath.Join(config.UserDataDir, "decks")
 	config.DistractionsDir = filepath.Join(config.UserDataDir, "distractions")
+	config.MediaDir = filepath.Join(config.UserDataDir, "assets")
 
 	fmt.Printf("user data dir: %v\n", config.UserDataDir)
 	//Mkdir(config.UserDataDir)

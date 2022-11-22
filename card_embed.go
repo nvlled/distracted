@@ -123,3 +123,8 @@ func ChecKModifiedCard(lastStartupCheck time.Time, cardPath string, config Confi
 	lastModify.Sub(lastStartupCheck)
 	return lastStartupCheck.Sub(lastModify) < 0
 }
+
+func GetCardMediaFilenames(cardContents string) []string {
+	re := regexp.MustCompile(`([\w,-]+?(\\|/))*?[\w,-]+?\.[A-Za-z]{1,4}`)
+	return re.FindAllString(cardContents, -1)
+}

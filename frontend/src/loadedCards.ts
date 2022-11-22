@@ -23,7 +23,7 @@ function getIndex(card: CardEntry): number {
     if (index === undefined) {
         index = cards.findIndex((c) => c.id === card.id);
     }
-    if (index === undefined) {
+    if (index === undefined || index < 0) {
         index = cards.length;
         indexCache.set(card.id, index);
         cards.push(card);

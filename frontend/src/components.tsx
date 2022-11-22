@@ -36,11 +36,12 @@ export namespace Keybind$ {
         children: ReactNode;
         ctrl?: boolean;
         shift?: boolean;
+        active?: boolean;
         keyName: string;
         otherKeys?: KeyInfo[];
         placement?: KeybindPopup$.PopupPlacement;
     }
-    export function View({ children, keyName, ctrl, shift, otherKeys, placement }: Props) {
+    export function View({ active, children, keyName, ctrl, shift, otherKeys, placement }: Props) {
         const [show, setShow] = useAtom(appState.showKeybindings);
         const childrenRef = useRef<HTMLDivElement | null>(null);
 
@@ -48,6 +49,7 @@ export namespace Keybind$ {
 
         const handler = useFn(async (e: KeyboardEvent) => {
             if (!childrenRef.current) return;
+            if (active !== undefined && !active) return;
 
             let match = false;
             for (const k of keys) {
@@ -246,12 +248,13 @@ export namespace CardSearch$ {
         const [matches, setMatches] = useState([] as main.CardData[]);
         const [showMatches, setShowMatches] = useState(false);
 
-        const onSearch = useCallback(
+        const onSearch = useFn(
             deferInvoke(512, function (query: string | undefined) {
                 if (!query) {
                     setShowMatches(false);
                     return;
                 }
+                query = query.trim();
 
                 const matches: main.CardData[] = [];
                 for (const c of iterateCards()) {
@@ -263,7 +266,6 @@ export namespace CardSearch$ {
                 setMatches(matches);
                 setShowMatches(true);
             }),
-            [],
         );
 
         function onSelect(card: main.CardData) {
@@ -279,7 +281,7 @@ export namespace CardSearch$ {
                         <Menu>
                             {matches.map((c) => (
                                 <MenuItem key={c.id} onClick={() => onSelect(c)}>
-                                    {c.filename}
+                                    {c.path}
                                 </MenuItem>
                             ))}
                         </Menu>

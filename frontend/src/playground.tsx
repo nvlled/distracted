@@ -264,7 +264,7 @@ export namespace Playground$ {
             position: relative;
             height: 0;
             .collapse-tabs {
-                z-index: ${Shoe.z_index_toast};
+                z-index: 1;
                 position: absolute;
                 opacity: 0.5;
                 top: calc(${Shoe.spacing_large_2x} * 1);
@@ -1054,7 +1054,6 @@ export namespace SelectedCards$ {
             th {
                 background: ${Shoe.panel_background_color};
                 position: sticky;
-                z-index: ${Shoe.z_index_dropdown};
                 top: 0px;
             }
             tr {

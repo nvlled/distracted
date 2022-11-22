@@ -32,6 +32,7 @@ type Config struct {
 	UserDataDir     string
 	DecksDir        string
 	DistractionsDir string
+	MediaDir        string
 
 	DBFile string
 

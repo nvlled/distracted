@@ -25,6 +25,10 @@ func (self *App) serveDeckFile(routerCtx echo.Context, pathFields []string) (boo
 
 	filename := filepath.Join(self.config.DecksDir, deckName, deckFile)
 
+	if !RegularFileExists(self.ctx, filename) {
+		filename = filepath.Join(self.config.MediaDir, deckFile)
+	}
+
 	fmt.Printf(
 		"serving deck file: id=%v, %v\n",
 		deckName,
