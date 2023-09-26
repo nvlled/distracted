@@ -59,10 +59,6 @@ func NewApp() *App {
 }
 
 func (app *App) startup(ctx context.Context) {
-	if app.devMode {
-		runtime.Hide(ctx)
-	}
-
 	app.LoadConfig()
 	app.ctx = ctx
 	app.InitDB()

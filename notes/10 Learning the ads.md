@@ -1,0 +1,5 @@
+On the article spacing effect from wikipedia, there's a section on practical applications on spacing effect. The curious part is that it's applied on advertising as well. Of course, my immediate reaction would be WTF, but thinking about it more, I guess it's not really surprising? More and more beefy brained people are working ads today, if one day advertising industry becomes one of the pioneers of technological innovation, I wouldn't be surprised at all.
+
+In other words, I'm not surprised at all if I have subconsciously "learned" the ads, that they have it self-inserted themselves in my malfunctioning neurons with me blissfully unaware of it. Well, it doesn't matter for me though, I don't  have any spending cash on me.
+
+But there's something more interesting here. If it's possible to learn ads with zero awareness, is it possible to apply the same principles on things I want to learn? Hmm.

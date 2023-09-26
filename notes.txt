@@ -1,0 +1,55 @@
+Welp, I come back to this project one or two months later,
+and I'm itching for a full rewrite. I updated wails, and
+something broke. Actually, it's my code that it's broke,
+updating wails has nothing to do with it. But looking
+at the shitty mess in this project is in, I rather
+not work on it again. The lag is also very noticeable,
+especially after working on ebiten where it's all
+buttery smooth faster. Wails tooling is also complex and slow.
+I'd rather start over than continue working on this.
+
+But I wouldn't say this project is an abject failure.
+More precisely, it was an exploration project, 
+where the effort was focused more on the journey than
+the destination, where the destination is not a fixed
+point, but a moving target. 
+
+Then the target stopped moving, it's now standing still.
+It's clear now what must be done, what steps to take
+towards a direct path.
+The project is done, as the destination is now chartered.
+The second voyage calls for another project. 
+
+The first project expectedly took longer, as I wasn't
+sure what I was doing. Lots of missteps and lots 
+of rewriting, and self-loathing.
+
+My point is: a full rewrite is a must, but it's also
+should be shorter and easier the second time around.
+
+----
+
+here's my disordered notes and ideas
+- I don't really need a good looking UI,
+  fuck the animations and icons and shit
+
+- use a toml for the card files,
+  letting the user fully customize the card
+  contents is nice, but not really all that useful
+  and just makes thing way harder to implement
+
+- since markdown will no be longer used, I also
+  don't need file watchers. If some files are moved,
+  just inform the user of missing files, don't copy files automatically
+  
+- cut down features and UIs, let the user manually edit 
+  files config and data files
+
+- if I'm going to use ebiten, I should confirm first if
+  it can play audios and render unicode fine
+
+- use a keyboard-driven UI, but do use buttons too,
+  just design a dumb simple UI that forgoes the need
+  for complex UI components
+  - use https://code.rocketnine.space/tslocum/messeji for text input
+  

@@ -11,7 +11,7 @@ require (
 	github.com/labstack/echo/v4 v4.9.0
 	github.com/samber/lo v1.27.1
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
-	github.com/wailsapp/wails/v2 v2.2.0
+	github.com/wailsapp/wails/v2 v2.3.1
 )
 
 require (
@@ -49,4 +49,4 @@ require (
 	modernc.org/sqlite v1.17.3 // indirect
 )
 
-replace github.com/wailsapp/wails/v2 v2.2.0 => /home/nvlled/opt/wails/v2
+replace github.com/wailsapp/wails/v2 v2.3.1 => /home/nvlled/opt/wails/v2
