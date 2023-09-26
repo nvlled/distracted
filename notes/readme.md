@@ -13,4 +13,11 @@ or irritation that are felt while perusing this trashbin.
 Dragons and goblins may also start appearing in your backyard.
 
 You've been warned. Proceed at your own peril.
-[O]kay [N]o [F]doubt [B]leh [W]hatevs
+
+- [O]kay
+- [N]o
+- [F]doubt
+- [B]leh
+- [W]hatevs
+
+>

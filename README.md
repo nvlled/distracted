@@ -1,5 +1,8 @@
 # distracted
 
+[![demo](https://i.ytimg.com/vi/Q3oNS4FsT1o/maxresdefault.jpg)](https://www.youtube.com/watch?v=Q3oNS4FsT1o "demo")
+(Click to watch demo on youtube)
+
 # About
 
 This is a card-based study tool that uses spaced repetition,
@@ -24,9 +27,14 @@ I can't at will forget my name, but that's because
 it's already entreched in my long-term memory. But for instance,
 I want to remember a random, isolated information, like the number **843294831279**.
 This is relatively easy to put in short-term memory, but also
-quite easy to forget in the long-term.
+quite easy to forget in the long-term. If I want to remember it
+for longer periods of time, I could try periodically reviewing it,
+say everyday. This may take a long while, and could have excessive
+or redundant reviews since it might not be fitting the forgetting curve.
 
-There are plenty of possible ways, but these what I came up with:
+What I want is to forget it sooner than normal, making the reviews
+more effective and shorter. There are plenty of possible ways how to
+forget something, but these what I came up with:
 
 - **Information overloading**. Basically, trying to memorize another
   fact right after memoring the other one. For instance, I managed to memorize **1283123713** for now.
@@ -57,7 +65,7 @@ I have long discontinued this project. But recently, I needed
 some stuff to put in my dearthly portfolio for work applications,
 so I dug this up again, and added some readme.
 Hence, despite my reservations, I decided to just put this in a public repo anyways.
-I spent at least a month working on this one anyways,
+I spent at least a month working on this one,
 it'd be a waste to let this rot into oblivion.
 
 I'm not planning on continuing this particular project though, but
